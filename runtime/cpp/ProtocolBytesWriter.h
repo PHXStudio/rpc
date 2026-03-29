@@ -5,7 +5,7 @@
 #include "ProtocolWriter.h"
 
 
-/** 写入一个bytes数组. */
+/** 鍐欏叆涓�涓猙ytes鏁扮粍. */
 class ProtocolBytesWriter : public ProtocolWriter
 {
 public:

@@ -3,7 +3,7 @@
 #include "Common.h"
 #include "ProtocolReader.h"
 
-/** 从一个bytes数组读取. */
+/** 浠庝竴涓猙ytes鏁扮粍璇诲彇. */
 class ProtocolBytesReader : public ProtocolReader
 {
 public:

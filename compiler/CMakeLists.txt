@@ -1,28 +1,18 @@
 ########################################################################
-# bintalk compiler
+# rpc compiler
 ########################################################################
 
 # find bison & flex.
 find_package(BISON REQUIRED)
 find_package(FLEX REQUIRED)
-BISON_TARGET(BINTALK_PARSER bin.y ${CMAKE_CURRENT_BINARY_DIR}/bin.tab.cpp)
-IF(MSVC)
-	FLEX_TARGET(BINTALK_SCANNER bin.l ${CMAKE_CURRENT_BINARY_DIR}/lex.yy.cpp COMPILE_FLAGS "--nounistd" )
-ELSE()
-	FLEX_TARGET(BINTALK_SCANNER bin.l ${CMAKE_CURRENT_BINARY_DIR}/lex.yy.cpp)
-ENDIF()
-ADD_FLEX_BISON_DEPENDENCY(BINTALK_SCANNER BINTALK_PARSER)
+bison_target(BINTALK_PARSER bin.y "${CMAKE_CURRENT_BINARY_DIR}/bin.tab.cpp")
+if(MSVC)
+	flex_target(BINTALK_SCANNER bin.l "${CMAKE_CURRENT_BINARY_DIR}/lex.yy.cpp" COMPILE_FLAGS "--nounistd")
+else()
+	flex_target(BINTALK_SCANNER bin.l "${CMAKE_CURRENT_BINARY_DIR}/lex.yy.cpp")
+endif()
+add_flex_bison_dependency(BINTALK_SCANNER BINTALK_PARSER)
 
-#SET(Boost_USE_STATIC_LIBS ON)
-#FIND_PACKAGE(Boost COMPONENTS system filesystem program_options REQUIRED)
-#INCLUDE_DIRECTORIES( ${Boost_INCLUDE_DIR} )
-#LINK_DIRECTORIES(${Boost_LIBRARY_DIR})
-
-
-# to find generated files.
-include_directories(${CMAKE_CURRENT_SOURCE_DIR})
-# make generated files include source files.
-include_directories(${CMAKE_CURRENT_BINARY_DIR})
 
 # sources.
 set(PARSER_FILES
@@ -73,7 +63,12 @@ source_group( gen FILES ${GEN_FILES})
 source_group( misc FILES ${MISC_FILES})
 
 add_executable(rpc ${PARSER_FILES} ${SPEC_FILES} ${GEN_FILES} ${MISC_FILES})
+target_include_directories(rpc PRIVATE
+	${CMAKE_CURRENT_SOURCE_DIR}
+	${CMAKE_CURRENT_BINARY_DIR}
+	${PROJECT_BINARY_DIR}
+)
 
-# install bintalk
+# install rpc
 #TARGET_LINK_LIBRARIES(rpc ${Boost_LIBRARIES})
-install(TARGETS rpc DESTINATION bin)
+install(TARGETS rpc DESTINATION ${CMAKE_INSTALL_BINDIR})

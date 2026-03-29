@@ -2,7 +2,7 @@
 #define __ProtocolMemWriter_h__
 #include "Common.h"
 #include "ProtocolWriter.h"
-/** 从一个指定内存区读取数据的读取器实现.
+/** 浠庝竴涓寚瀹氬唴瀛樺尯璇诲彇鏁版嵁鐨勮鍙栧櫒瀹炵幇.
 */
 class ProtocolMemWriter : public ProtocolWriter
 {

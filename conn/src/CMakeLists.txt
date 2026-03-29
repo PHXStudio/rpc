@@ -1,13 +1,11 @@
 # connections 
 
-CMAKE_MINIMUM_REQUIRED(VERSION 2.6)
+cmake_minimum_required(VERSION 3.16)
+project(connections LANGUAGES CXX)
 
 # Set lib dir to lib
-SET( LIBRARY_OUTPUT_PATH ${CMAKE_BINARY_DIR}/../lib )
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/../lib")
 
-AUX_SOURCE_DIRECTORY( . sources )
-IF( CMAKE_BUILD_TYPE MATCHES "Debug" )
-	ADD_LIBRARY(connections_d STATIC ${sources} ) 
-ELSE( CMAKE_BUILD_TYPE MATCHES "Debug" )
-	ADD_LIBRARY(connections STATIC ${sources} ) 
-ENDIF( CMAKE_BUILD_TYPE MATCHES "Debug" )
+aux_source_directory(. sources)
+add_library(connections STATIC ${sources})
+set_target_properties(connections PROPERTIES DEBUG_POSTFIX "d")
