@@ -6,13 +6,13 @@
 
 #include "Channel.h"
 
-/** 基于bin协议的网络通讯 Channel.
+/** bin Channel.
 
-	BINChannel 将一个 BIN_STUB，一个 BIN_PROXY 与一个 Channel 通信管道
-	整合到一起，实现了使用这个 Channel 对 BIN借口调用的发送和接收工作。
-	BINChannel 将接收到的数据通过 BIN_PROXY 进行消息分派，调用 BIN_PROXY 
-	中对应的 BIN 接口函数。使用者可以通过重载 BIN_STUB 中的接口对消息进行处理。
-	使用者还可以通过调用这个 BINChannel 的 BIN_STUB 接口发送 BIN 消息。
+	BINChannel  BIN_STUB BIN_PROXY  Channel 
+	 Channel  BIN
+	BINChannel  BIN_PROXY  BIN_PROXY 
+	 BIN  BIN_STUB 
+	 BINChannel  BIN_STUB  BIN 
 
 	@see BINConnection
 */
@@ -23,24 +23,24 @@ class BINChannel :
 	public ProtocolWriter /* protocol writer for BIN_STUB */
 {
 public:
-	/** 从这个channel接收到的数据会交给 p 进行分派处理. */
+	/** channel p . */
 	BINChannel():
 	proxy_(NULL)
 	{
 	}
 
-	/** 设置proxy指针. */
+	/** proxy. */
 	void setProxy(BIN_PROXY* p)		{ proxy_ = p; }
 
-	/** 处理channel接收到的数据.
-		交给BIN proxy进行dispatch.
+	/** channel.
+		BIN proxydispatch.
 	*/
 	virtual bool handleReceived(void* data, size_t size)
 	{
 		if(!proxy_)
 			return true;
 
-		// 将接收到的消息通过 BIN_PROXY::dispatch 进行分派，调用对应的接口。
+		//  BIN_PROXY::dispatch 
 		ProtocolMemReader r(data, size);
 		return proxy_->dispatch(&r);
 	}

@@ -19,7 +19,7 @@ curLineno_(1)
 
 Compiler::~Compiler()
 {
-	// 删除所有的definition实例.
+	// Free parsed definitions.
 	for(size_t i = 0; i < definitions_.size(); i++)
 		delete definitions_[i];
 }
@@ -40,7 +40,7 @@ extern FILE *yyin;
 
 int Compiler::compile()
 {
-	// 打开源文件.
+	// Open input.
 	yyin = fopen(inputFileName_.c_str(), "r");
 	if(yyin == NULL)
 	{
@@ -48,7 +48,7 @@ int Compiler::compile()
 		return 1;
 	}
 
-	// 设置当前文件名
+	// Root file stem.
 	filename_ = File::GetFileName(inputFileName_);
 	fileStem_ = File::GetFileBaseName(inputFileName_);
 	curFilename_ = filename_;
@@ -58,7 +58,7 @@ int Compiler::compile()
 	curPath += "/";
 	importPaths_.insert(importPaths_.begin(), curPath);
 
-	// 开始分析文件.
+	// Parse.
 	int r;
 	if(r = yyparse())
 	{
@@ -68,7 +68,7 @@ int Compiler::compile()
 
 	fclose(yyin);
 
-	// 选择代码生成器.
+	// Pick generator backend.
 	CppGenerator cppGen;
 	//ASGenerator as3Gen;
 	CSGenerator csGen;
@@ -86,7 +86,7 @@ int Compiler::compile()
 	else if(generator_ == "py")
 		gen = &pyGen;
 
-	// 生成代码.
+	// Emit code.
 	try
 	{
 		gen->generate();

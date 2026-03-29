@@ -156,7 +156,7 @@ static void generateProxyMethodDecl(CodeFile& f, Method& m, bool pureVirtual = t
 
 static void generateStructDecl(CodeFile& f, Struct* s)
 {
-	/** 生成struct定义开头部分.处理struct的派生.
+	/** struct.struct.
 	*/
 	f.output("// struct %s", s->getNameC());
 	if(s->super_)
@@ -166,7 +166,7 @@ static void generateStructDecl(CodeFile& f, Struct* s)
 	f.output("{");
 	f.indent();
 
-	/** 生成struct的成员变量列表.
+	/** struct.
 	*/
 	f.output("// member list.");
 	for(size_t i = 0; i < s->fields_.size(); i++)
@@ -175,7 +175,7 @@ static void generateStructDecl(CodeFile& f, Struct* s)
 		f.output("%s %s;", getFieldCppType(field), field.getNameC());
 	}
 
-	/** 生成field id列表. 
+	/** field id. 
 		enum
 		{
 			FID_...,
@@ -198,8 +198,8 @@ static void generateStructDecl(CodeFile& f, Struct* s)
 	f.recover();
 	f.output("};");
 
-	/** 自动生成struct的构造函数.
-		检查是否需要constructor.如果没有需要产生default value的field，则不需要constructor.
+	/** struct.
+		constructor.default valuefieldconstructor.
 	*/
 	bool needCtor = false;
 	for(size_t i = 0; i < s->fields_.size(); i++)
@@ -217,7 +217,7 @@ static void generateStructDecl(CodeFile& f, Struct* s)
 		f.output("%s();", s->getNameC());
 	}
 
-	/** 生成序列化代码.
+	/** .
 		void serialize(ProtocolWriter* s) const;
 		bool deserialize(ProtocolReader* r);
 	*/
@@ -234,7 +234,7 @@ static void generateStructDecl(CodeFile& f, Struct* s)
 		f.output("// cppcode.");
 		f.output("%s", s->cppcode_.c_str());
 	}
-	/** 结束生成.
+	/** .
 	*/
 	f.recover();
 	f.output("};");
@@ -242,7 +242,7 @@ static void generateStructDecl(CodeFile& f, Struct* s)
 
 static void generateStubDecl(CodeFile& f, Service* s)
 {
-	/** 生成service stub class定义开头部分.
+	/** service stub class.
 	*/
 	f.output("// service stub %s", s->getNameC());
 	if(s->super_)
@@ -273,7 +273,7 @@ static void generateStubDecl(CodeFile& f, Service* s)
 
 static void generateProxyDecl(CodeFile& f, Service* s)
 {
-	/** 生成service Proxy class定义开头部分.
+	/** service Proxy class.
 	*/
 	f.output("// service proxy %s", s->getNameC());
 	if(s->super_)
@@ -284,7 +284,7 @@ static void generateProxyDecl(CodeFile& f, Service* s)
 	f.output("public:");
 	f.indent();
 
-	// methods纯虚函数列表定义.
+	// methods.
 	f.output("// methods.");
 	for(size_t i = 0; i < s->methods_.size(); i++)	
 	{
@@ -331,7 +331,7 @@ static void generateFieldSerialize(CodeFile& f, Field& field, const char* sender
 	f.output("// serialize %s",field.getNameC());
 	if(field.getArray())
 	{
-		// 数组属性，先序列化数组大小
+		// 
 		if(!skipComp)		f.output("if(%s.size())", field.getNameC());
 							f.output("{");
 							f.indent();
@@ -340,7 +340,7 @@ static void generateFieldSerialize(CodeFile& f, Field& field, const char* sender
 							f.output("for(U32 i = 0; i < __len__; i++)");
 							f.output("{");
 							f.indent();
-		// 遍历序列化每个元素进行序列化处理.
+		// .
 		if(field.getType() == FT_USER)
 		{
 							f.output("%s[i].serialize(%s);", field.getNameC(), senderName);
@@ -379,7 +379,7 @@ static void generateFieldSerialize(CodeFile& f, Field& field, const char* sender
 		}
 		else if(field.getType() == FT_BOOL)
 		{ 
-			/* bool类型使用fieldmask就可以表示了，这里省略.*/ 
+			/* boolfieldmask.*/ 
 			if(skipComp) 
 			{
 							f.output("%s->writeType(%s);", senderName, field.getNameC());
@@ -409,7 +409,7 @@ static void generateFieldSerializeJson(CodeFile& f, Field& field)
 	f.output("ss << \"\\\"%s\\\":\";", field.getNameC());
 	if (field.getArray())
 	{
-		// 数组属性，先序列化数组大小
+		// 
 		f.output("{");
 		f.indent();
 		f.output("ss << \"[\";");
@@ -417,7 +417,7 @@ static void generateFieldSerializeJson(CodeFile& f, Field& field)
 		f.output("for(U32 i = 0; i < __len__; i++)");
 		f.output("{");
 		f.indent();
-		// 遍历序列化每个元素进行序列化处理.
+		// .
 		if (field.getType() == FT_USER)
 		{
 			f.output("%s[i].serializeJson(ss);", field.getNameC());
@@ -491,7 +491,7 @@ static void generateFieldContainerSerialize(CodeFile& f, FieldContainer* fc, con
 
 	if(!skipComp)
 	{
-		// 首先为这些fields生成 FieldMask 设置代码.
+		// fields FieldMask .
 		f.output("//field mask");
 		f.output("FieldMask<%d> __fm__;", fc->getFMByteNum());
 		for(size_t i = 0; i <fc-> fields_.size(); i++)
@@ -514,7 +514,7 @@ static void generateFieldContainerSerialize(CodeFile& f, FieldContainer* fc, con
 		f.output("%s->write(__fm__.masks_, %d);", senderName, fc->getFMByteNum());
 	}
 
-	// 序列化所有的field的内容.
+	// field.
 	for(size_t i = 0; i < fc->fields_.size(); i++)
 		generateFieldSerialize(f, fc->fields_[i], senderName, skipComp);
 }
@@ -524,7 +524,7 @@ static void generateFieldContainerSerializeJson(CodeFile& f, FieldContainer* fc)
 	if (!fc->fields_.size())
 		return;
 
-	// 序列化所有的field的内容.
+	// field.
 	for (size_t i = 0; i < fc->fields_.size(); i++)
 	{
 		generateFieldSerializeJson(f, fc->fields_[i]);
@@ -537,14 +537,14 @@ static void generateFieldDeserialize(CodeFile& f, Field& field, const char* recv
 	f.output("// deserialize %s", field.getNameC());
 	if(field.getArray())
 	{
-		// 数组属性，先反序列化数组大小
+		// 
 		if(!skipComp)		f.output("if(__fm__.readBit())");
 							f.output("{");
 							f.indent();
 							f.output("U32 __len__;");
 							f.output("if(!%s->readDynSize(__len__) || __len__ > %d) return false;", recvName, field.getMaxArrLength());
 							f.output("%s.resize(__len__);", field.getNameC());
-							// 遍历反序列化每个元素.
+							// .
 							f.output("for(U32 i = 0; i < __len__; i++)");
 							f.output("{");
 							f.indent();
@@ -600,7 +600,7 @@ static void generateFieldDeserialize(CodeFile& f, Field& field, const char* recv
 		}
 		else if(field.getType() == FT_ENUM)
 		{
-							f.output("EnumSize __e__ = 0;");	//如果readBit为0，则__e__当作0来用
+							f.output("EnumSize __e__ = 0;");	//readBit0__e__0
 			if(!skipComp)	f.output("if(__fm__.readBit()){");
 							f.output("if(!%s->readType(__e__) || __e__ >= %d) return false;", recvName, field.getUserType()->getEnum()->items_.size()); 
 							f.output("%s = (%s)__e__;", field.getNameC(), getFieldCppType(field, false));
@@ -625,21 +625,21 @@ static void generateFieldContainerDeserialize(CodeFile& f, FieldContainer* fc, c
 
 	if(!skipComp)
 	{
-		// 首先读取这些field的 field mask.
+		// field field mask.
 		f.output("//field mask");
 		f.output("FieldMask<%d> __fm__;", fc->getFMByteNum());
 		f.output("if(!%s->read(__fm__.masks_, %d)) return false;", recvName, fc->getFMByteNum());
 	}
 
-	// 读取每个field的序列化信息.
+	// field.
 	for(size_t i = 0; i < fc->fields_.size(); i++)
 		generateFieldDeserialize(f, fc->fields_[i], recvName, skipComp);
 }
 
 static void generateStructDef(CodeFile& f, Struct* s)
 {
-	/** 自动生成struct的构造函数.
-		检查是否需要constructor.如果没有需要产生default value的field，则不需要constructor.
+	/** struct.
+		constructor.default valuefieldconstructor.
 	*/
 	bool needCtor = false;
 	for(size_t i = 0; i < s->fields_.size(); i++)
@@ -667,7 +667,7 @@ static void generateStructDef(CodeFile& f, Struct* s)
 		f.output("{}");
 	}
 
-	/** 自动生成序列化代码.
+	/** .
 		void serialize(ProtocolWriter* s) const;
 	*/
 	f.output("void %s::serialize(ProtocolWriter* __s__) const", s->getNameC());
@@ -679,7 +679,7 @@ static void generateStructDef(CodeFile& f, Struct* s)
 	f.recover();
 	f.output("}");
 
-	/** 自动生成反序列化代码.
+	/** .
 		bool deserialize(ProtocolReader* r);
 	*/
 	f.output("bool %s::deserialize(ProtocolReader* __r__)", s->getNameC());
@@ -770,11 +770,11 @@ static void generateProxyMethodDef(CodeFile&f, Method& m, const std::string& svc
 static void generateProxyDef(CodeFile& f, Service* s)
 {
 
-	// methods解编代码.
+	// methods.
 	for(size_t i = 0; i < s->methods_.size(); i++)
 		generateProxyMethodDef(f, s->methods_[i], s->getName());
 
-	// Dispatch 函数定义.
+	// Dispatch .
 				f.output("bool %sProxy::dispatch(ProtocolReader* r)", s->getNameC());
 				f.output("{");
 				f.indent();
@@ -808,13 +808,13 @@ void CppGenerator::generate()
 {
 	// H File.
 	{
-		// 打开文件.
+		// .
 		std::string fn = 
 			Compiler::inst().outputDir_ + 
 			Compiler::inst().fileStem_ + ".h";
 		CodeFile f(fn);
 
-		// 写文件头.
+		// .
 		f.output("/* This file is generated by arpcc, do not change manually! */");
 		f.output("#ifndef __%s_h__", Compiler::inst().fileStem_.c_str());
 		f.output("#define __%s_h__", Compiler::inst().fileStem_.c_str());
@@ -829,11 +829,11 @@ void CppGenerator::generate()
 
 		}
 
-		// 开始处的cppcode.
+		// cppcode.
 		if(Compiler::inst().cppcode_.length())
 			f.output("%s", Compiler::inst().cppcode_.c_str());
 
-		// 遍历所有的定义.
+		// .
 		for(size_t i = 0; i < Compiler::inst().definitions_.size(); i++)
 		{
 			Definition* definition = Compiler::inst().definitions_[i];
@@ -851,10 +851,10 @@ void CppGenerator::generate()
 				generateProxyDecl(f, s);
 
 				/* Methods file.
-				methods文件是一个service接口需要被重载的函数声明，派生类在内
-				部可以直接包含这个文件，而不用再手动维护与service接口的一致性。
-				methods文件并不是必须使用，只是为了维护方便，也可以不使用methods文件，
-				而手动的维护这些接口函数。
+				methodsservice
+				service
+				methodsmethods
+				
 				*/
 				std::string mfn = Compiler::inst().outputDir_ + s->getName() + "Methods.h";
 				CodeFile mf(mfn);
@@ -870,18 +870,18 @@ void CppGenerator::generate()
 	}
 	// Cpp File.
 	{
-		// 打开文件.
+		// .
 		std::string fn = 
 			Compiler::inst().outputDir_ + 
 			Compiler::inst().fileStem_ + ".cpp";
 		CodeFile f(fn);
 
-		// 写文件头.
+		// .
 		f.output("/* arpcc auto generated cpp file. */");
 		f.output("#include \"FieldMask.h\"");
 		f.output("#include \"%s.h\"", Compiler::inst().fileStem_.c_str());
 
-		// 遍历所有的定义.
+		// .
 		for(size_t i = 0; i < Compiler::inst().definitions_.size(); i++)
 		{
 			Definition* definition = Compiler::inst().definitions_[i];

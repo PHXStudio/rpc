@@ -3,9 +3,7 @@
 
 #include "Common.h"
 
-/** 运行期enum信息. 
- * 组要负责在运行期进行id到名称的转换.
- */
+/** Runtime enum metadata (name <-> id). */
 class EnumInfo
 {
 public:
@@ -15,9 +13,9 @@ public:
 		initFunc(this);
 	}
 
-	/** 从一个字符串转换为对应的enum item id.
-		@param item enum item name.
-		@return -1 表示转换失败.
+	/** Map a string label to an enumerator index.
+		@param item Enumerator name.
+		@return -1 if not found.
 	*/
 	int getItemId(const std::string& item)
 	{
@@ -28,9 +26,9 @@ public:
 		return (int)(r - items_.begin());
 	}
 
-	/** 从一个enum item id转换为字符串名称.
-		@param item enum item id.
-		@return NULL 表示转换失败.
+	/** Map an enumerator index to its name.
+		@param item Enumerator index.
+		@return NULL if out of range.
 	*/
 	const char* getItemName(int item)
 	{
@@ -43,7 +41,7 @@ public:
 	std::vector<std::string>		items_;
 };
 
-/** 用来获取一个enum运行期信息的宏. */
+/** Macro to access generated enum runtime info. */
 #define ENUM(E)	enum##E
 
 

@@ -6,7 +6,7 @@
 
 #include "ChannelConnection.h"
 
-/** 基于BIN协议的 ChannelConnection. 
+/** BIN ChannelConnection. 
 */
 template<
 	class CHANNEL,
@@ -25,28 +25,28 @@ public:
 	proxy_(NULL)
 	{}
 
-	/** 设置proxy指针. */
+	/** proxy. */
 	void setProxy(BIN_PROXY* p)		{ proxy_ = p; }
 
-	/** 获得这个连接管理的所有 Channel 对象列表. */
+	/**  Channel . */
 	void getAllChannels(std::vector<CHANNEL*>& channels)
 	{
 		ChannelConnection::getAllChannels((std::vector<Channel*>&)channels);
 	}
 
-	/** 连接一个channel. 
-		将连接初始化数据通过BIN struct整编.
-		@param c 需要建立的channel对象.
-		@param initData 连接初始化数据.
+	/** channel. 
+		BIN struct.
+		@param c channel.
+		@param initData .
 	*/
 	void connectChannel(CHANNEL* c)
 	{
 		connect(c);
 	}
 
-	/** 用来初始化被动 CHANNEL 的对象.
-		派生类需要重载这个函数对channel进行初始化.
-		@param initData channel初始化数据.
+	/**  CHANNEL .
+		channel.
+		@param initData channel.
 	*/
 	virtual Channel* accept() { return new CHANNEL();}
 
@@ -55,7 +55,7 @@ public:
 		if(!proxy_)
 			return size;
 
-		// 将接收到的消息通过 BIN_PROXY::dispatch 进行分派，调用对应的接口。
+		//  BIN_PROXY::dispatch 
 		ProtocolMemReader r(data, size);
 		return proxy_->dispatch(&r);
 	}

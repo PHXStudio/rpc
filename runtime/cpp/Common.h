@@ -1,83 +1,74 @@
 #ifndef __COMMON_H__
 #define __COMMON_H__
 
-/** @page arpc 异步RPC系统.
+/** @page arpc Asynchronous RPC overview.
 
-arpc系统( asynchronous remote procedure calling )是一个类似于CORBA的系统，将网络层封装到对象方法调用级别，方便了网络协议的编写。
+The arpc system (asynchronous remote procedure calling) is CORBA-like: it maps networking to
+object-style calls and keeps protocol code small.
 
-@section aprc_ref 参考系统
-- google protocol buffers.
+@section aprc_ref References
+- Google Protocol Buffers
 - CORBA
 
-这些实现都很成熟且被广泛使用，但是这些实现对于游戏来说有一些缺点:
-- 过于复杂，不便于游戏应用
-- 效率问题
-- 很难对idl进行自定义扩展 
+These are mature, but for games they are often too heavy, not fast enough, and hard to extend
+with a custom IDL.
 
+@section desc Design
+arpc targets a small RPC core: marshal/unmarshal and dispatch only; everything else is out of scope.
 
-@section desc 系统描述
-arpc系统的设计目标是一个轻便的rpc系统，主要完成rpc的整编解编和调用功能，其他功能不在考虑范围内。
+@par Features
+- Message parsing is mostly generated; fewer hand-written parsers.
+- Schema changes stay localized.
+- RPC is decoupled from transport and IO models.
+- The IDL compiler can emit test helpers, loggers, etc.
 
-@par arpc的功能
-- 简化应用中通讯消息的解析工作，所有的消息解析代码依赖于RPC编译器自动生成，减少手动编写代码产生错误的概率
-- 简化消息的修改工作
-- RPC与具体的传输层实现分开，使RPC系统可以在各种传输协议以及IO模型中使用
-- 可以通过RPC方便的产生出各种实现代码，比如服务自动测试工具，消息log工具等等
-为了达到系统设计简单轻便的目标，arpc所有的调用全部基于异步，所以每个调用只能使用传入参数，而没有传出参数和返回值。
-在使用arpc系统时，可以将交互双方看作是基于异步的请求与事件处理。
+All calls are asynchronous: only input parameters, no output parameters or return values.
+Treat peers as async request/event handlers.
 
-@par
-aprc系统主要由一个idl编译器和一个运行时库组成
+@par Components
+An IDL compiler plus a small runtime library.
 @image html arpc.png
-@see Sepcification ProtocolWriter ProtocolReader 
+@see Sepcification ProtocolWriter ProtocolReader
 
-@subsection aprc_stub Service Stub
-arpcc 会根据一个service描述生成这个service调用方stub类。
-stub主要负责将一个成员函数调用进行整编，并将整编数据写入到引用的 ProtocolWriter 中。
-使用者可以通过派生 ProtocolWriter 来实现运载协议和数据的传输功能。 
+@subsection aprc_stub Service stub
+The compiler emits a stub that marshals a member call into a ProtocolWriter. Subclass
+ProtocolWriter to send bytes over your transport.
 
-@subsection proxy Service Proxy
-arpcc 会根据一个service描述生成这个service被调用方的proxy类。
-通过调用proxy的全局应该函数dispatch，并传入一个 ProtocolReader 实例和一个proxy派生类实例，
-可以将stub整编数据解编成对这个proxy对象成员函数的调用。
-使用者需要派生proxy，实现纯虚成员函数具体功能。
-@note proxy 只提供解编功能，而不提供具体处理对象的定位。proxy派生类的定位应该由使用者自行实现。
+@subsection proxy Service proxy
+The compiler emits a proxy for the callee side. Call the global dispatch with a ProtocolReader
+and a proxy instance to demarshal into member calls. Subclass the proxy and implement handlers.
+@note The proxy only demarshals; locating the handler object is up to you.
 
+@section safety Security
+If the sender is untrusted (e.g. a game client), tighten checks; receiver-side checks are generated.
 
-@section safety arpc安全性
-如果发送端有安全问题(如game client),应该对一些关键点进行设置。
-这些设置只会在接收端生成检测代码。
-
-@par 动态大小参数
-尽量不要使用动态大小参数的method，以免受到攻击。
-动态参数包括 array 和 string.
-如果使用，因该设定array和string允许的最大长度.
+@par Dynamic-sized fields
+Avoid dynamic-sized methods when possible. If you use arrays or strings, set maximum lengths.
 
 */
 
+#include <cstdint>
 #include <string>
-
-typedef signed long long	S64;
-typedef unsigned long long	U64;
-typedef double				F64;
-typedef float				F32;
-typedef signed int			S32;
-typedef unsigned int		U32;
-typedef signed short		S16;
-typedef unsigned short		U16;
-typedef signed char			S8;
-typedef unsigned char		U8;
-typedef bool				B8;
-
-typedef std::string			STRING;
-
-/** 表示一个enum的类型. */
-typedef unsigned char EnumSize;
-
-
 #include <vector>
-#include <string>
 #include <algorithm>
+
+using S64 = std::int64_t;
+using U64 = std::uint64_t;
+using F64 = double;
+using F32 = float;
+using S32 = std::int32_t;
+using U32 = std::uint32_t;
+using S16 = std::int16_t;
+using U16 = std::uint16_t;
+using S8 = std::int8_t;
+using U8 = std::uint8_t;
+using UINT8 = std::uint8_t;
+using B8 = bool;
+
+using STRING = std::string;
+
+/** Storage width for enum values in generated code. */
+typedef unsigned char EnumSize;
 
 
 

@@ -253,7 +253,7 @@ void PYGenerator::generate()
 		f.output("from %s import *", incFilename.c_str());
 	}
 
-	// 遍历所有的定义.
+	// .
 	for(size_t i = 0; i < Compiler::inst().definitions_.size(); i++)
 	{
 		Definition* definition = Compiler::inst().definitions_[i];

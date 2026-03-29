@@ -4,7 +4,7 @@
 #include <iterator>
 #include "Args.h"
 
-/** arpcc编译器入口. */
+/** arpcc entry point. */
 int main( int argc, char *argv[] )
 {
 
@@ -22,6 +22,6 @@ int main( int argc, char *argv[] )
 		return 1;
 	}
 
-	// 编译源文件
+	// Run compile.
 	return Compiler::inst().compile();
 }

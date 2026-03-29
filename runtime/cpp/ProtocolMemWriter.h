@@ -2,8 +2,7 @@
 #define __ProtocolMemWriter_h__
 #include "Common.h"
 #include "ProtocolWriter.h"
-/** 从一个指定内存区读取数据的读取器实现.
-*/
+/** ProtocolWriter that writes into a fixed memory buffer. */
 class ProtocolMemWriter : public ProtocolWriter
 {
 public:

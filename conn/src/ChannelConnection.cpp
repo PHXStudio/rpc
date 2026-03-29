@@ -38,7 +38,7 @@ ChannelConnection::~ChannelConnection()
 void ChannelConnection::connect(Channel* c)
 {
 	ACE_ASSERT(isConnector_);
-	// 首先关闭channel.
+	// channel.
 	
 	if (NULL == c)
 	{
@@ -47,14 +47,14 @@ void ChannelConnection::connect(Channel* c)
 	
 	c->conn_ = this;
 	c->guid_ = guidGen_++;
-	///@todo 没有处理guid重复问题.
+	///@todo guid.
 	addChannel(c->guid_, c);
 
 	// Header.
 	char type = (char)PT_ChanConnect;
 	fill(&type, sizeof(char));
 	fill(&(c->guid_), sizeof(unsigned int));
-	// 写入一个临时的长度.
+	// .
 	msgLen_ = sendBuf_.wr_ptr();
 	unsigned int len = 0;
 	fill(&len, sizeof(unsigned int));
@@ -75,7 +75,7 @@ void ChannelConnection::disconnect(Channel*c)
 	unsigned int len = 0;
 	fill(&len, sizeof(unsigned int));
 	flush();
-	// 移除这个channel.
+	// channel.
 	c->conn_ = NULL;
 	removeChannel(c->guid_);
 }
@@ -112,7 +112,7 @@ void ChannelConnection::initChannelSendingData(Channel* c)
 	unsigned int chId = c->guid_;
 	fill(&type, sizeof(char));
 	fill(&chId, sizeof(unsigned int));
-	// 写入一个临时的长度.
+	// .
 	msgLen_ = sendBuf_.wr_ptr();
 	unsigned int len = 0;
 	fill(&len, sizeof(unsigned int));
@@ -123,7 +123,7 @@ void ChannelConnection::initGlobalSendingData()
 	// Header.
 	char type = (char)PT_GlobalData;
 	fill(&type, sizeof(char));
-	// 写入一个临时的长度.
+	// .
 	msgLen_ = sendBuf_.wr_ptr();
 	unsigned int len = 0;
 	fill(&len, sizeof(unsigned int));
@@ -134,7 +134,7 @@ void ChannelConnection::initBCSendingData(std::set<Channel*>& channels)
 	// Header.
 	char type = (char)PT_ChanBCData;
 	fill(&type, sizeof(char));
-	// 临时填入channel数量，并保留这个数量的指针，已备接下来对channel有效性检查时修改.
+	// channelchannel.
 	unsigned int* pNumChan = (unsigned int*)sendBuf_.wr_ptr();
 	unsigned int numChan = 0;
 	fill(&numChan, sizeof(unsigned int));
@@ -146,10 +146,10 @@ void ChannelConnection::initBCSendingData(std::set<Channel*>& channels)
 			continue;
 		unsigned int guid = ch->guid_;
 		fill(&guid, sizeof(unsigned int));
-		// 递增有效的channel数量.
+		// channel.
 		*pNumChan = *pNumChan + 1;
 	}
-	// 写入一个临时的长度.
+	// .
 	msgLen_ = sendBuf_.wr_ptr();
 	unsigned int len = 0;
 	fill(&len, sizeof(unsigned int));
@@ -180,37 +180,37 @@ int ChannelConnection::handleReceived(void* data, size_t size)
 		char* curData = (char*)data + handled;
 		size_t curDataSize = size - handled;
 
-		// 解析消息头
+		// 
 		if(curDataSize < sizeof(char))
 			return handled;
 		char* type = (char*)curData;
 
-		// 判断协议类型.
+		// .
 		switch(*type)
 		{
 		case PT_ChanConnect:
 			{
 				if(isConnector_)
 				{
-					// 连接模式不应该受到这个协议.
+					// .
 					return -1;
 				}
 
-				// 检查消息头完整性.
+				// .
 				size_t hdrSize = sizeof(char) + sizeof(unsigned int)*2;
 				if(curDataSize < hdrSize)
 					return handled;
 				unsigned int* chId	= (unsigned int*)(curData+1);
 				unsigned int* len	= chId+1;
 
-				// 检查数据完整性.
+				// .
 				if(curDataSize < hdrSize + *len)
 					return handled;
 
-				// 处理消息
+				// 
 				if(findChannel(*chId))
 				{
-					// 这个channel已经存在，出现错误.
+					// channel.
 					return -1;
 				}
 				Channel* ch = accept();
@@ -231,11 +231,11 @@ int ChannelConnection::handleReceived(void* data, size_t size)
 				unsigned int* chId	= (unsigned int*)(curData+1);
 				unsigned int* len	= chId+1;
 
-				// 检查数据完整性.
+				// .
 				if(curDataSize < hdrSize + *len)
 					return handled;
 
-				// 处理消息
+				// 
 				Channel* ch = findChannel(*chId);
 				if(ch)
 				{
@@ -249,18 +249,18 @@ int ChannelConnection::handleReceived(void* data, size_t size)
 			break;
 		case PT_ChanData:
 			{
-				// 检查消息头完整性.
+				// .
 				size_t hdrSize = sizeof(char) + sizeof(unsigned int)*2;
 				if(curDataSize < hdrSize)
 					return handled;
 				unsigned int* chId	= (unsigned int*)(curData+1);
 				unsigned int* len	= chId+1;
 
-				// 检查数据完整性.
+				// .
 				if(curDataSize < hdrSize + *len)
 					return handled;
 
-				// 处理消息
+				// 
 				Channel* ch = findChannel(*chId);
 				if(ch)
 				{
@@ -272,7 +272,7 @@ int ChannelConnection::handleReceived(void* data, size_t size)
 			break;
 		case PT_ChanBCData:
 			{
-				// 检查消息头完整性.
+				// .
 				size_t hdrSize = sizeof(char) + sizeof(unsigned int);
 				if(size - handled < hdrSize)
 					return handled;
@@ -284,7 +284,7 @@ int ChannelConnection::handleReceived(void* data, size_t size)
 				unsigned int* len		= (unsigned int*)(curData + hdrSize - sizeof(unsigned int));
 				if(curDataSize < hdrSize + *len)
 					return handled;
-				// 处理消息.
+				// .
 				void* bcdata			= curData + hdrSize;
 				for(unsigned int i = 0; i < *numChan; i++)
 				{
@@ -300,7 +300,7 @@ int ChannelConnection::handleReceived(void* data, size_t size)
 			break;
 		case PT_GlobalData:
 			{
-				// 检查完整性.
+				// .
 				size_t hdrSize = sizeof(char) + sizeof(unsigned int);
 				if(curDataSize < hdrSize)
 					return handled;
@@ -314,7 +314,7 @@ int ChannelConnection::handleReceived(void* data, size_t size)
 			break;
 		default:
 			{
-				// 协议头错误，返回消息处理错误，断开连接.
+				// .
 				return -1;
 			}
 		}

@@ -7,10 +7,7 @@
 #include "Definition.h"
 #include "Field.h"
 
-/** Struct 代表一个用户自定义的数据类型. 
-	Struct 类似一个 c++ struct 定义，由成员变量列表组成。
-	APRC_Struct 支持派生.
-*/
+/** User-defined aggregate type (like a C++ struct; supports inheritance). */
 class Struct : 
 	public Definition,
 	public FieldContainer
@@ -29,15 +26,15 @@ public:
 
 	virtual Struct*	getStruct()	{ return this; }
 
-	/** 查找一个成员属性定义是否存在. */
+	/** Return whether a member field exists. */
 	bool findField( const std::string& name );
 
-	/** 获得struct field数量. */
+	/** Number of fields. */
 	size_t getFieldNum();
 
-	Struct*				super_;		///< 继承自
-	std::string					cppcode_;	///< c++ code.
-	bool						skipComp_;	///< 忽略压缩方式.
+	Struct*				super_;		///< Base struct, if any.
+	std::string					cppcode_;	///< Embedded C++ snippet.
+	bool						skipComp_;	///< Skip compression for this type.
 };
 
 

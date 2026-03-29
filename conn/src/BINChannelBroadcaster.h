@@ -5,13 +5,13 @@
 #include "ChannelBroadcaster.h"
 
 
-/** 基于BIN协议的 ChannelBroadcaster.
+/** BIN ChannelBroadcaster.
 
-	BINChannelBroadcaster 将 一个 BIN_STUB 和一个 ChannelBroadcaster 
-	的功能进行整合，使用者可以通过调用 BIN_STUB 的函数，将这次调用的数据广播给
-	集合中所有的 channel。
+	BINChannelBroadcaster   BIN_STUB  ChannelBroadcaster 
+	 BIN_STUB 
+	 channel
 
-	@todo 有待优化，当set为空时应该尽量减少计算量.
+	@todo set.
 */
 template<class BIN_STUB, class CHANNEL>
 class BINChannelBroadcaster :

@@ -9,9 +9,7 @@ class Enum;
 class Struct;
 class Service;
 
-/** RPC 语言定义基础类.
-	Definition 的列表组成了 aprc 语言的基础单位。
-*/
+/** Base class for every IDL definition node. */
 class Definition
 {
 public:
@@ -36,8 +34,8 @@ public:
 	//@}
 
 private:
-	std::string					file_;	///< 这个定义所在文件名称.
-	std::string					name_;	///< 定义名称.
+	std::string					file_;	///< Defining file path.
+	std::string					name_;	///< Definition name.
 };
 
 

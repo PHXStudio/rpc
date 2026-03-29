@@ -3,18 +3,16 @@
 
 #include "Common.h"
 
-/** ARPC通讯协议写入器接口.
-	ProtocolWriter 为生成的service stub提供arpc协议整编数据写入接口。
-	一个 ProtocolWriter 可以得到 一个service stub 在序列化rpc数据后的写入事件，
-	派生类可以重载这个接口，将数据写入到内存或直接写入网络。
+/** ARPC protocol writer interface.
+	Used by generated stubs to write marshaled bytes; implement write() to send to memory or a socket.
 */
 class ProtocolWriter
 {
 public:
-	/** 写入rpc序列化数据. 
-		stub在rpc调用过程中通过此接口写入序列化数据.
-		@param data 数据指针.
-		@param len 数据长度.
+	/** Write marshaled RPC payload bytes.
+		Called by the stub while sending a call.
+		@param data Source buffer.
+		@param len Number of bytes.
 	*/
 	virtual void write(const void* data, size_t len) = 0;
 

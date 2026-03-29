@@ -26,10 +26,7 @@ enum EFieldType
 	//FT_BYTES,	///< getSize()
 };
 
-/** Field 代表一个 type name 表示的字段对象.
-	Field 用来表示 Struct 中的成员变量以及 Method 的参数.
-	每个 Field 实例都有类型和名称。
-*/
+/** Field: typed name used for struct members and method parameters. */
 class Field
 {
 public:
@@ -55,21 +52,19 @@ public:
 	void setMaxStrLength(size_t l)	{ maxStrLength_ = l; }
 	size_t getMaxStrLength()		{ return maxStrLength_; }
 private:
-	std::string				name_;			///< 字段名称.
-	EFieldType			type_;			///< 字段类型.
-	Definition*		userType_;		///< 如果是FT_USER或FT_ENUM.
-	bool					array_;			///< 是否是array
-	size_t					maxArrLength_;	///< 接收端允许的最大数组长度.
-	size_t					maxStrLength_;	///< 接收端允许的最大字符串长度.
+	std::string				name_;			///< Field name.
+	EFieldType			type_;			///< Field type.
+	Definition*		userType_;		///< FT_USER or FT_ENUM target.
+	bool					array_;			///< True if array.
+	size_t					maxArrLength_;	///< Max array length on receive side.
+	size_t					maxStrLength_;	///< Max string length on receive side.
 };
 
-/** Field 容器类.
-	FieldContainer 包含了一个 Field 对象数组，用来管理这些fields.
-*/
+/** Owns a list of Field objects. */
 class FieldContainer
 {
 public:
-	/** 查找一个field是否存在. */
+	/** Return whether a field name exists. */
 	bool findField(const std::string& name);
 	/** How many bytes will be used for the field mask of this field container. */
 	int getFMByteNum() { return (fields_.size()-1)/8+1; }

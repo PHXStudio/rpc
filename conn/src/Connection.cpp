@@ -55,20 +55,20 @@ const char* Connection::getStatusDesc()
 
 int Connection::open(void * p)
 {
-	// 获取地址.
+	// .
 	if(stream_.get_remote_addr(remoteAddr_) == -1)
 		return -1;
 	if(stream_.get_local_addr(localAddr_) == -1)
 		return -1;
 
-	// 将socket设置为非阻塞.
+	// socket.
 	if(stream_.enable(ACE_NONBLOCK) == -1)
 		return -1;
 
-	// 注册可读事件.
+	// .
 	if(reactor()->register_handler(stream_.get_handle(), this, ACE_Event_Handler::READ_MASK) == -1)
 		return -1;
-	// 重置send & recv buffers.
+	// send & recv buffers.
 	sendBuf_.reset();
 	recvBuf_.reset();
 	totalRBytes_ = 0;
@@ -108,13 +108,13 @@ void Connection::flush()
 	if(!sendBuf_.length())
 		return;
 
-	// 尝试做一次发送.
+	// .
 	ssize_t sended = stream_.send(sendBuf_.rd_ptr(), sendBuf_.length());
 	if(sended == -1)
 	{
 		if(ACE_OS::last_error() != EWOULDBLOCK)
 		{
-			// 发送出现错误.
+			// .
 			clear();
 			status_ = SendFailed;
 			errno_	= ACE_OS::last_error();
@@ -123,23 +123,23 @@ void Connection::flush()
 	}
 	else
 	{
-		// 发送成功.
+		// .
 		totalWBytes_ += sended;
 		sendBuf_.rd_ptr(sended);
 		sendBuf_.crunch();
 	}
 
-	// 查看sendbuffer中是否还有残留数据.
+	// sendbuffer.
 	if(sendBuf_.length())
 	{
-		// 注册监听写入事件，等待可写时再次发送.(多次注册会不会有问题？？？？)
+		// .()
 		reactor()->register_handler(stream_.get_handle(), this, ACE_Event_Handler::WRITE_MASK);
 	}
 }
 
 int Connection::handle_input(ACE_HANDLE fd)
 {
-	// 检测sb溢出.
+	// sb.
 	if(recvBuf_.space() == 0)
 	{
 		clear();
@@ -150,7 +150,7 @@ int Connection::handle_input(ACE_HANDLE fd)
 	ssize_t recved = stream_.recv(recvBuf_.wr_ptr(), recvBuf_.space());
 	if(recved == -1)
 	{
-		// 接收出现错误.
+		// .
 		clear();
 		status_ = RecvFailed;
 		errno_	= ACE_OS::last_error();
@@ -158,28 +158,28 @@ int Connection::handle_input(ACE_HANDLE fd)
 	}
 	else if(recved == 0)
 	{
-		// 对方正常关闭了连接.
+		// .
 		clear();
 		status_ = RemoteClosed;
 		return -1;
 	}
 	else
 	{
-		// 接收到了消息，进行解编处理.
+		// .
 		totalRBytes_ += recved;
 		recvBuf_.wr_ptr(recved);
 		
 		int processed = handleReceived(recvBuf_.rd_ptr(), recvBuf_.length());
 		if(processed == -1)
 		{
-			// 消息处理出现错误.
+			// .
 			clear();
 			status_ = MsgProcFailed;
 			return -1;
 		}
 		else
 		{
-			// 处理成功，crunch recv buffer.
+			// crunch recv buffer.
 			recvBuf_.rd_ptr((size_t)processed);
 			recvBuf_.crunch();
 			return 0;
@@ -195,7 +195,7 @@ int Connection::handle_output(ACE_HANDLE fd)
 	ssize_t sended = stream_.send(sendBuf_.rd_ptr(), sendBuf_.length());
 	if(sended == -1)
 	{
-		// 发送出现错误.
+		// .
 		clear();
 		status_ = SendFailed;
 		errno_	= ACE_OS::last_error();
@@ -203,11 +203,11 @@ int Connection::handle_output(ACE_HANDLE fd)
 	}
 	else
 	{
-		// 发送成功, crunch send buffer
+		// , crunch send buffer
 		totalWBytes_ += sended;
 		sendBuf_.rd_ptr(sended);
 		sendBuf_.crunch();
-		// 如果sb中还有残留数据，注册下一次可写事件.
+		// sb.
 		return sendBuf_.length()?0:-1;
 	}
 }

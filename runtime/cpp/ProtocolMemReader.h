@@ -4,8 +4,7 @@
 #include "Common.h"
 #include "ProtocolReader.h"
 
-/** 从一个指定内存区读取数据的读取器实现.
-*/
+/** ProtocolReader over a fixed memory buffer. */
 class ProtocolMemReader : public ProtocolReader
 {
 public:

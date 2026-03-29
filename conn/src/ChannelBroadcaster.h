@@ -5,12 +5,12 @@
 #include <set>
 #include <map>
 
-/** 针对一组 CHANNEL 发送广播消息的管理器.
+/**  CHANNEL .
 	
-	ChannelBroadcaster 管理一个 CHANNEL 的集合，如果通过 ChannelBroadcaster 
-	进行消息的发送，这个消息会广播给这个集合中所有的 CHANNEL 对象。
+	ChannelBroadcaster  CHANNEL  ChannelBroadcaster 
+	 CHANNEL 
 
-	ChannelBroadcaster 建立在 ChannelConnection 的数据广播接口上。
+	ChannelBroadcaster  ChannelConnection 
 */
 template<class CHANNEL>
 class ChannelBroadcaster 
@@ -24,22 +24,22 @@ public:
 	{
 	}
 
-	/** 添加一个channel对象.
-		@warning 这个channel对象必须有效，并且在被ChannelBroadcaster管理过程中
-				 不能被关闭.
+	/** channel.
+		@warning channelChannelBroadcaster
+				 .
 	*/
 	void addChannel(CHANNEL* ch)
 	{
 		ACE_ASSERT(ch->isValid());
 		ChannelConnection* conn = ch->getConn();
 		ACE_ASSERT(conn);
-		// 查找并添加这个channel对应的connection.
+		// channelconnection.
 		std::pair<typename ConnToChanMap::iterator, bool> r = 
 			connToChans_.insert(std::pair<ChannelConnection*, ChannelSet>(conn, ChannelSet()));
 		r.first->second.insert(ch);
 	}
 
-	/** 移除一个channel对象. */
+	/** channel. */
 	void removeChannel(CHANNEL* ch)
 	{
 		ACE_ASSERT(ch->isValid());
@@ -53,15 +53,15 @@ public:
 			connToChans_.erase(iter);
 	}
 
-	/** 清除所有的channel对象. */
+	/** channel. */
 	void clearChannels()
 	{
 		connToChans_.clear();
 	}
 
-	/** 准备广播数据. 
-		此操作为集合中的每个connection准备好channel集合，等待接下来调用 fillSendingData 
-		填充广播数据.
+	/** . 
+		connectionchannel fillSendingData 
+		.
 	*/
 	void initSendingData()
 	{
@@ -72,9 +72,9 @@ public:
 		}
 	}
 
-	/** 填充广播数据. 
-		此操作为集合中的每个connection填充好待广播的数据，等待接下来的 flushSendingData
-		发送广播数据.
+	/** . 
+		connection flushSendingData
+		.
 	*/
 	void fillSendingData(void* data, size_t size)
 	{
@@ -85,8 +85,8 @@ public:
 		}
 	}
 
-	/** 发送广播数据. 
-		此操作为集合中的每个connection做最终的数据发送，广播结束.
+	/** . 
+		connection.
 	*/
 	void flushSendingData()
 	{

@@ -208,61 +208,57 @@ namespace File
 #include "Struct.h"
 #include "Service.h"
 
-/** arpc语言编译器类.
-	Compiler 通过flex和bison对源文件进行分析，构建符合arpc语法规范的抽象语法
-	树，然后生成对应的代码文件.
-*/
+/** arpc compiler: flex/bison parse, AST, emit generated sources. */
 class Generator;
 class Compiler
 {
 public:
-	/** 获得全局引用. */
+	/** Singleton. */
 	static Compiler& inst();
 
 	Compiler();
 	~Compiler();
 
-	/** 编译源文件. */
+	/** Compile current input. */
 	int compile();
 
-	/** 根据名称查找一个定义. 
-	*/
+	/** Lookup definition by name. */
 	Definition* findDefinition( const std::string& name );
 
-	/** 输出编译错误. */
+	/** Print error (printf-style). */
 	void outputError(const char* e, ...);
-	/** 输出当前文件行编译错误. */
+	/** Print error with file/line context. */
 	void outputErrorFL(const char* e, ...);
 
-	/** @name 配置信息. */
+	/** @name Options. */
 	//@{
-	/** 源文件完整路径名称. */
+	/** Primary input path. */
 	std::string						inputFileName_;
-	/** 生成代码文件的目录. */
+	/** Output directory for generated files. */
 	std::string						outputDir_;
-	/** 用于寻找import文件的目录. */
+	/** Import search paths. */
 	std::vector<std::string>		importPaths_;
-	/** 代码生成器名称 .*/
+	/** Generator id (e.g. cpp, py). */
 	std::string						generator_;
-	/** 当前编译的根文件名称. */
+	/** Root file path for this compile. */
 	std::string						filename_;
-	/** 当前编译的文件名stem. */
+	/** Root file stem. */
 	std::string						fileStem_;
 	//@}
 
-	/** 根文件直接包含的文件名称. */
+	/** Direct imports from the root file. */
 	std::vector<std::string>		imports_;
-	/** 所有已经被包含过的文件名称，防止重复包含. */
+	/** Already-imported files (prevent duplicate import). */
 	std::set<std::string>			importedFiles_;
-	/** 当前被解析的文件名称. */
+	/** File being parsed. */
 	std::string						curFilename_;
-	/** 当前被解析文件的行号. */
+	/** Current line in curFilename_. */
 	int								curLineno_;
-	/** 开始处的cppcode. */
+	/** Leading C++ snippet from the root file. */
 	std::string						cppcode_;
-	/** 这个源文件包含的所有arpc定义. */
+	/** Top-level definitions from this compile unit. */
 	std::vector<Definition*>	definitions_;
-	// 当前编译状态.
+	// Parser state scratch.
 	Enum						curEnum_;
 	Struct						curStruct_;
 	Service					curService_;

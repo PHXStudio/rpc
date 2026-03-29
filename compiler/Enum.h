@@ -5,9 +5,7 @@
 #include "Definition.h"
 #include "Field.h"
 
-/** 枚举定义类.
-	Enum 表示一个和c++ enum类似的枚举定义。
-*/
+/** Enum definition (similar to a C++ enum). */
 class Enum : public Definition
 {
 public:
@@ -18,14 +16,13 @@ public:
 		super_.setType(FT_INT32);
 	}
 
-	/** 查找一个枚举项是否存在.
-	*/
+	/** Return whether an enumerator label exists. */
 	bool findItem( const std::string& item );
 	Field &getSuperType(){return super_;}
 	virtual Enum* getEnum() { return this; }
 
 	Field						super_;
-	std::vector< std::string >	items_;	///< 枚举项列表.
+	std::vector< std::string >	items_;	///< Enumerator names.
 };
 
 

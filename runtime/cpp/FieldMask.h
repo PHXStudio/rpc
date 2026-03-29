@@ -3,7 +3,7 @@
 
 #include "Common.h"
 
-/** 用于写入和读取按 bit 排列的 field mask。 */
+/** Sequential bit writer/reader for a field mask (packed into bytes). */
 template<int LEN>
 class FieldMask
 {

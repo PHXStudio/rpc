@@ -169,7 +169,7 @@ bytes			return TOKEN_BYTES;
 						}
 						else if (c == '\n')
 							Compiler::inst().curLineno_++;
-						// 仅存储根文件的cppcode.
+						// cppcode.
 						if( fileStack.size() == 0 )
 							Compiler::inst().cppcode_.push_back(c);
 					}
