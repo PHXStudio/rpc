@@ -47,25 +47,12 @@ Avoid dynamic-sized methods when possible. If you use arrays or strings, set max
 
 */
 
-#include <cstdint>
+#include <stdint.h>
 #include <string>
 #include <vector>
 #include <algorithm>
+#include <ostream>
 
-using S64 = std::int64_t;
-using U64 = std::uint64_t;
-using F64 = double;
-using F32 = float;
-using S32 = std::int32_t;
-using U32 = std::uint32_t;
-using S16 = std::int16_t;
-using U16 = std::uint16_t;
-using S8 = std::int8_t;
-using U8 = std::uint8_t;
-using UINT8 = std::uint8_t;
-using B8 = bool;
-
-using STRING = std::string;
 
 /** Storage width for enum values in generated code. */
 typedef unsigned char EnumSize;

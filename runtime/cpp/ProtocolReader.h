@@ -18,71 +18,71 @@ public:
 
 	/** @name read basic types. */
 	//@{
-	bool readType(S64& v)
+	bool readType(int64_t& v)
 	{
-		return read(&v, sizeof(S64));
+		return read(&v, sizeof(int64_t));
 	}
-	bool readType(U64& v)
+	bool readType(uint64_t& v)
 	{
-		return read(&v, sizeof(U64));
+		return read(&v, sizeof(uint64_t));
 	}
-	bool readType(F64& v)
+	bool readType(double& v)
 	{
-		return read(&v, sizeof(F64));
+		return read(&v, sizeof(double));
 	}
-	bool readType(F32& v)
+	bool readType(float& v)
 	{
-		return read(&v, sizeof(F32));
+		return read(&v, sizeof(float));
 	}
-	bool readType(S32& v)
+	bool readType(int32_t& v)
 	{
-		return read(&v, sizeof(S32));
+		return read(&v, sizeof(int32_t));
 	}
-	bool readType(U32& v)
+	bool readType(uint32_t& v)
 	{
-		return read(&v, sizeof(U32));
+		return read(&v, sizeof(uint32_t));
 	}
-	bool readType(S16& v)
+	bool readType(int16_t& v)
 	{
-		return read(&v, sizeof(S16));
+		return read(&v, sizeof(int16_t));
 	}
-	bool readType(U16& v)
+	bool readType(uint16_t& v)
 	{
-		return read(&v, sizeof(U16));
+		return read(&v, sizeof(uint16_t));
 	}
-	bool readType(S8& v)
+	bool readType(int8_t& v)
 	{
-		return read(&v, sizeof(S8));
+		return read(&v, sizeof(int8_t));
 	}
-	bool readType(U8& v)
+	bool readType(uint8_t& v)
 	{
-		return read(&v, sizeof(U8));
+		return read(&v, sizeof(uint8_t));
 	}
-	bool readType(B8& v)
+	bool readType(bool& v)
 	{
 		char vv;
-		if(!read(&vv, sizeof(B8)))
+		if(!read(&vv, sizeof(bool)))
 			return false;
 		v = vv?true:false;
 		return true;
 	}
-	bool readType(STRING& v, U32 maxlen)
+	bool readType(std::string& v, uint32_t maxlen)
 	{
-		U32 len;
+		uint32_t len;
 		if(!readDynSize(len) || len > maxlen)
 			return false;
 		v.resize(len);
 		return read((void*)v.c_str(), len);
 	}
-	bool readDynSize(U32& s)
+	bool readDynSize(uint32_t& s)
 	{
 		s = 0;
-		U8 b;
+		uint8_t b;
 		if(!readType(b))
 			return false;
-		S32 n = (b & 0XC0)>>6;
+		int32_t n = (b & 0XC0)>>6;
 		s = (b & 0X3F);
-		for(S32 i = 0; i < n; i++)
+		for(int32_t i = 0; i < n; i++)
 		{
 			if(!readType(b))
 				return false;
