@@ -1,0 +1,6 @@
+#pragma once
+/** Paths for cross-language tests (configured by CMake). */
+#define RPC_TEST_GEN_CS_DIR "@RPC_TEST_GEN_CS_DIR@"
+#define RPC_TEST_VERIFIER_CSPROJ "@RPC_TEST_VERIFIER_CSPROJ@"
+/** Absolute path to dotnet when cross-language tests are enabled. */
+#define RPC_TEST_DOTNET_EXE "@RPC_TEST_DOTNET_ABS@"

@@ -26,3 +26,7 @@ configure_file("Config.h.in" "Config.h")
 add_subdirectory(compiler)
 # runtime.
 #add_subdirectory(runtime)
+
+include(CTest)
+enable_testing()
+add_subdirectory(tests)

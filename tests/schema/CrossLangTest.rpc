@@ -1,0 +1,7 @@
+/* Minimal schema for C++ <-> C# cross-language serialization tests. */
+struct CrossLangPayload (skipcomp)
+{
+	int32 i32_;
+	string s_;
+	bytes b_;
+};

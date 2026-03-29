@@ -13,34 +13,34 @@ static const char* getFieldCppType(Field& f, bool withArray = true)
 	switch(f.getType())
 	{
 	case FT_INT64:
-		name += "S64";
+		name += "int64_t";
 		break;
 	case FT_UINT64:
-		name += "U64";
+		name += "uint64_t";
 		break;
 	case FT_DOUBLE:
-		name += "F64";
+		name += "double";
 		break;
 	case FT_FLOAT:
-		name += "F32";
+		name += "float";
 		break;
 	case FT_INT32:
-		name += "S32";
+		name += "int32_t";
 		break;
 	case FT_UINT32:
-		name += "U32";
+		name += "uint32_t";
 		break;
 	case FT_INT16:
-		name += "S16";
+		name += "int16_t";
 		break;
 	case FT_UINT16:
-		name += "U16";
+		name += "uint16_t";
 		break;
 	case FT_INT8:
-		name += "S8";
+		name += "int8_t";
 		break;
 	case FT_UINT8:
-		name += "U8";
+		name += "uint8_t";
 		break;
 	case FT_BOOL:
 		name += "bool";
@@ -335,9 +335,9 @@ static void generateFieldSerialize(CodeFile& f, Field& field, const char* sender
 		if(!skipComp)		f.output("if(%s.size())", field.getNameC());
 							f.output("{");
 							f.indent();
-							f.output("U32 __len__ = (U32)%s.size();", field.getNameC());
+							f.output("uint32_t __len__ = (uint32_t)%s.size();", field.getNameC());
 							f.output("%s->writeDynSize(__len__); ", senderName);
-							f.output("for(U32 i = 0; i < __len__; i++)");
+							f.output("for(uint32_t i = 0; i < __len__; i++)");
 							f.output("{");
 							f.indent();
 		// .
@@ -413,8 +413,8 @@ static void generateFieldSerializeJson(CodeFile& f, Field& field)
 		f.output("{");
 		f.indent();
 		f.output("ss << \"[\";");
-		f.output("U32 __len__ = (U32)%s.size();", field.getNameC());
-		f.output("for(U32 i = 0; i < __len__; i++)");
+		f.output("uint32_t __len__ = (uint32_t)%s.size();", field.getNameC());
+		f.output("for(uint32_t i = 0; i < __len__; i++)");
 		f.output("{");
 		f.indent();
 		// .
@@ -440,7 +440,7 @@ static void generateFieldSerializeJson(CodeFile& f, Field& field)
 		}
 		else
 		{
-			f.output("ss << (S64)%s[i];", field.getNameC());
+			f.output("ss << (int64_t)%s[i];", field.getNameC());
 		}
 		
 		f.output("ss <<(((i+1) == __len__) ? \"\":\",\")<<\"\";");
@@ -477,7 +477,7 @@ static void generateFieldSerializeJson(CodeFile& f, Field& field)
 		}
 		else 
 		{
-			f.output("ss << (S64)%s;", field.getNameC());
+			f.output("ss << (int64_t)%s;", field.getNameC());
 		}
 		f.recover();
 		f.output("}");
@@ -541,11 +541,11 @@ static void generateFieldDeserialize(CodeFile& f, Field& field, const char* recv
 		if(!skipComp)		f.output("if(__fm__.readBit())");
 							f.output("{");
 							f.indent();
-							f.output("U32 __len__;");
+							f.output("uint32_t __len__;");
 							f.output("if(!%s->readDynSize(__len__) || __len__ > %d) return false;", recvName, field.getMaxArrLength());
 							f.output("%s.resize(__len__);", field.getNameC());
 							// .
-							f.output("for(U32 i = 0; i < __len__; i++)");
+							f.output("for(uint32_t i = 0; i < __len__; i++)");
 							f.output("{");
 							f.indent();
 		if(field.getType() == FT_USER)
@@ -724,7 +724,7 @@ static void generateStubMethodDef(CodeFile& f, Service*s, Method& m, size_t pid)
 	f.indent();
 	f.output("ProtocolWriter* w = methodBegin();");
 	f.output("if(!w) return;");
-	f.output("U16 pid = %d;", pid);
+	f.output("uint16_t pid = %d;", pid);
 	f.output("w->writeType(pid);");
 	generateFieldContainerSerialize(f, &m, "w", true);
 	f.output("methodEnd();");
@@ -778,7 +778,7 @@ static void generateProxyDef(CodeFile& f, Service* s)
 				f.output("bool %sProxy::dispatch(ProtocolReader* r)", s->getNameC());
 				f.output("{");
 				f.indent();
-				f.output("U16 pid;");
+				f.output("uint16_t pid;");
 				f.output("if(!r->readType(pid)) return false;");
 				f.output("switch(pid)");
 				f.output("{");
