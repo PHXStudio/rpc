@@ -53,10 +53,8 @@ Avoid dynamic-sized methods when possible. If you use arrays or strings, set max
 #include <algorithm>
 #include <ostream>
 
-
-/** Storage width for enum values in generated code. */
-typedef unsigned char EnumSize;
-
-
+/** IDL enumeration values use a single wire type: they are read and written as uint8_t
+    in binary payloads (same width as C# byte). The C++ enum type may be wider; generated
+    code casts at the protocol boundary. */
 
 #endif//__COMMON_H__

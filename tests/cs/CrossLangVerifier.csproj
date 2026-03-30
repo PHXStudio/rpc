@@ -2,8 +2,12 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net6.0</TargetFramework>
+    <!-- Allow `dotnet exec` on machines with only newer shared runtimes (e.g. SDK 10, no 6.0). -->
+    <RollForward>LatestMajor</RollForward>
     <ImplicitUsings>disable</ImplicitUsings>
     <Nullable>disable</Nullable>
+    <!-- Explicit Compile list below; SDK 10+ otherwise double-includes *.cs in this folder. -->
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <GeneratedCsDir Condition="'$(GeneratedCsDir)' == ''">INVALID_SET_GeneratedCsDir</GeneratedCsDir>
   </PropertyGroup>
   <ItemGroup>

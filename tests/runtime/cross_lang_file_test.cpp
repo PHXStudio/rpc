@@ -14,6 +14,8 @@
 #include "tests_config.h"
 
 #ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
 #include <process.h>
 #else
 #include <sys/wait.h>
@@ -43,6 +45,12 @@ static int rpcPid() { return static_cast<int>(getpid()); }
 #endif
 
 std::string tempDirBase() {
+#ifdef _WIN32
+	char buf[MAX_PATH + 2];
+	const DWORD n = GetTempPathA(static_cast<DWORD>(sizeof(buf)), buf);
+	if (n > 0 && n < sizeof(buf))
+		return std::string(buf);
+#endif
 	const char* d = std::getenv("TMPDIR");
 	if (!d) d = std::getenv("TEMP");
 	if (!d) d = std::getenv("TMP");
@@ -52,8 +60,18 @@ std::string tempDirBase() {
 
 std::string makeTempPath(const char* tag) {
 	static int counter;
+	std::string base = tempDirBase();
+	if (!base.empty()) {
+		const char lc = base[base.size() - 1];
+		if (lc != '/' && lc != '\\')
+#ifdef _WIN32
+			base += '\\';
+#else
+			base += '/';
+#endif
+	}
 	std::ostringstream o;
-	o << tempDirBase() << "/rpc_crosslang_" << tag << "_" << rpcPid() << "_" << (counter++) << ".bin";
+	o << base << "rpc_crosslang_" << tag << "_" << rpcPid() << "_" << (counter++) << ".bin";
 	return o.str();
 }
 
@@ -119,11 +137,29 @@ void expectPayload(const CrossLangPayload& p) {
 }
 
 #if RPC_HAVE_DOTNET
-int runDotnetVerifier(const std::string& genCsDir, const std::string& verifierProj,
-	const std::vector<std::string>& args) {
+/** Forward slashes in cmd.exe-quoted paths avoid `\\"` escape issues on Windows. */
+static std::string cmdLinePath(const std::string& p) {
+#ifdef _WIN32
+	std::string o;
+	o.reserve(p.size());
+	for (char c : p)
+		o += (c == '\\') ? '/' : c;
+	return o;
+#else
+	return p;
+#endif
+}
+
+int runDotnetVerifier(const std::vector<std::string>& args) {
 	std::ostringstream cmd;
-	cmd << "\"" << RPC_TEST_DOTNET_EXE << "\" run --project \"" << verifierProj << "\" -p:GeneratedCsDir=\""
-		<< genCsDir << "\" -- ";
+	// `dotnet run` re-evaluates the project and can stall; tests use `dotnet exec` on the CMake-built DLL.
+#ifdef _WIN32
+	cmd << "set \"DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1\" && set \"DOTNET_CLI_TELEMETRY_OPTOUT=1\" && set "
+		   "\"DOTNET_NOLOGO=1\" && ";
+#else
+	cmd << "env DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1 DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1 ";
+#endif
+	cmd << "\"" << cmdLinePath(RPC_TEST_DOTNET_EXE) << "\" exec \"" << cmdLinePath(RPC_TEST_VERIFIER_DLL) << "\" ";
 	for (const auto& a : args) {
 		cmd << " \"";
 		for (char c : a) {
@@ -164,7 +200,7 @@ TEST(CrossLangFile, CppProducesCsConsumes) {
 
 	const std::string strHex = utf8ToHex(std::string(kTestUtf8));
 	const std::string bytesHex = bytesToHex(kTestBytes);
-	const int rc = runDotnetVerifier(RPC_TEST_GEN_CS_DIR, RPC_TEST_VERIFIER_CSPROJ,
+	const int rc = runDotnetVerifier(
 		{"verify-read", path, std::to_string(static_cast<long long>(kTestI32)), strHex, bytesHex});
 	EXPECT_EQ(rc, 0) << "dotnet verify-read failed for " << path << " hex=" << toHex(buf);
 	::remove(path.c_str());
@@ -174,7 +210,7 @@ TEST(CrossLangFile, CsProducesCppConsumes) {
 	const std::string path = makeTempPath("cs2cpp");
 	const std::string strHex = utf8ToHex(std::string(kTestUtf8));
 	const std::string bytesHex = bytesToHex(kTestBytes);
-	const int rc = runDotnetVerifier(RPC_TEST_GEN_CS_DIR, RPC_TEST_VERIFIER_CSPROJ,
+	const int rc = runDotnetVerifier(
 		{"write", path, std::to_string(static_cast<long long>(kTestI32)), strHex, bytesHex});
 	ASSERT_EQ(rc, 0) << "dotnet write failed path=" << path;
 

@@ -1,10 +1,9 @@
 #include "Compiler.h"
-#include <stdio.h>
+#include <cstdio>
+#include <cstdarg>
 #include "CodeGenerator.h"
 #include "CppGenerator.h"
-#include "ASGenerator.h"
 #include "CSGenerator.h"
-#include "ERLGenerator.h"
 #include "PYGenerator.h"
 
 Compiler& Compiler::inst()
@@ -41,7 +40,7 @@ extern FILE *yyin;
 int Compiler::compile()
 {
 	// Open input.
-	yyin = fopen(inputFileName_.c_str(), "r");
+	yyin = fopen(inputFileName_.c_str(), "rb");
 	if(yyin == NULL)
 	{
 		outputError("failed to open file \"%s\".", inputFileName_.c_str());
@@ -60,7 +59,7 @@ int Compiler::compile()
 
 	// Parse.
 	int r;
-	if(r = yyparse())
+	if ((r = yyparse()))
 	{
 		fclose(yyin);
 		return r;
@@ -70,19 +69,13 @@ int Compiler::compile()
 
 	// Pick generator backend.
 	CppGenerator cppGen;
-	//ASGenerator as3Gen;
 	CSGenerator csGen;
-	ERLGenerator erlGen;
 	PYGenerator pyGen;
 	CodeGenerator* gen = &cppGen;
 	if(generator_ == "cpp")
 		gen = &cppGen;
-	/*else if(generator_ == "as3")
-		gen = &as3Gen;*/
 	else if(generator_ == "cs")
 		gen = &csGen;
-	else if(generator_ == "erl")
-		gen = &erlGen;
 	else if(generator_ == "py")
 		gen = &pyGen;
 
@@ -100,9 +93,13 @@ int Compiler::compile()
 	return 0;
 }
 
-#include <cstdio>
-#include <cstdarg>
-#define GET_VARARGS( str, len, fmt ) char str[len];va_list argptr;	va_start( argptr, fmt );vsprintf( str, fmt, argptr );va_end( argptr );
+#define GET_VARARGS(str, len, fmt) \
+	char str[len]; \
+	va_list argptr; \
+	va_start(argptr, fmt); \
+	std::vsnprintf(str, len, fmt, argptr); \
+	str[(len) - 1] = '\0'; \
+	va_end(argptr);
 void Compiler::outputError(const char* e, ...)
 {
 	GET_VARARGS(str, 1024, e);

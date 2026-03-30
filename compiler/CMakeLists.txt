@@ -36,13 +36,11 @@ set(SPEC_FILES
 set(GEN_FILES
 	CppGenerator.h
 	PYGenerator.h
-	ERLGenerator.h
 	CSGenerator.h
 #    ASGenerator.h
 
 	CppGenerator.cpp
 	PYGenerator.cpp
-	ERLGenerator.cpp
 	CSGenerator.cpp
  #   ASGenerator.cpp
 	)

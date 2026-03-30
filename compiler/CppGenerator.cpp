@@ -347,7 +347,7 @@ static void generateFieldSerialize(CodeFile& f, Field& field, const char* sender
 		}
 		else if(field.getType() == FT_ENUM)
 		{
-							f.output("EnumSize __e__ = (EnumSize)%s[i];", field.getNameC());
+							f.output("uint8_t __e__ = (uint8_t)%s[i];", field.getNameC());
 							f.output("%s->writeType(__e__);", senderName );
 		}
 		else if(field.getType() == FT_STRING)
@@ -387,7 +387,7 @@ static void generateFieldSerialize(CodeFile& f, Field& field, const char* sender
 		}
 		else if(field.getType() == FT_ENUM)
 		{
-							f.output("EnumSize __e__ = (EnumSize)%s;", field.getNameC());
+							f.output("uint8_t __e__ = (uint8_t)%s;", field.getNameC());
 			if(!skipComp)	f.output("if(__e__){");
 							f.output("%s->writeType(__e__);", senderName );
 			if(!skipComp)	f.output("}");
@@ -558,7 +558,7 @@ static void generateFieldDeserialize(CodeFile& f, Field& field, const char* recv
 		}
 		else if(field.getType() == FT_ENUM)
 		{
-							f.output("EnumSize __e__;");
+							f.output("uint8_t __e__;");
 							f.output("if(!%s->readType(__e__) || __e__ >= %d) return false;", recvName, field.getUserType()->getEnum()->items_.size());
 							f.output("%s[i] = (%s)__e__;", field.getNameC(), getFieldCppType(field, false));
 		}
@@ -600,7 +600,7 @@ static void generateFieldDeserialize(CodeFile& f, Field& field, const char* recv
 		}
 		else if(field.getType() == FT_ENUM)
 		{
-							f.output("EnumSize __e__ = 0;");	//readBit0__e__0
+							f.output("uint8_t __e__ = 0;");	//readBit0__e__0
 			if(!skipComp)	f.output("if(__fm__.readBit()){");
 							f.output("if(!%s->readType(__e__) || __e__ >= %d) return false;", recvName, field.getUserType()->getEnum()->items_.size()); 
 							f.output("%s = (%s)__e__;", field.getNameC(), getFieldCppType(field, false));

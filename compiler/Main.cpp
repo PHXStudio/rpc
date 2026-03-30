@@ -14,7 +14,13 @@ int main( int argc, char *argv[] )
 
 		Compiler::inst().generator_ = args.GetCString('g');
 		Compiler::inst().inputFileName_ = args.GetCString('i');
-		Compiler::inst().outputDir_ = args.GetCString('o');
+		std::string outDir = args.GetCString('o');
+		if (!outDir.empty()) {
+			const char last = outDir[outDir.size() - 1];
+			if (last != '/' && last != '\\')
+				outDir.push_back('/');
+		}
+		Compiler::inst().outputDir_ = outDir;
 		
 	}
 	catch(...) 

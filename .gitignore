@@ -1,1 +1,5 @@
 build/
+
+# .NET build output (CrossLangVerifier)
+tests/cs/bin/
+tests/cs/obj/
