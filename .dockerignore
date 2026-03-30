@@ -1,0 +1,4 @@
+build/
+.git/
+tests/cs/bin/
+tests/cs/obj/

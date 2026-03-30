@@ -562,8 +562,14 @@ static void generateFieldDeserialize(CodeFile& f, Field& field, const char* recv
 							f.output("if(!%s->readType(__e__) || __e__ >= %d) return false;", recvName, field.getUserType()->getEnum()->items_.size());
 							f.output("%s[i] = (%s)__e__;", field.getNameC(), getFieldCppType(field, false));
 		}
+		else if(field.getType() == FT_BOOL)
+		{
+							f.output("uint8_t __bv__;");
+							f.output("if(!%s->readType(__bv__)) return false;", recvName);
+							f.output("%s[i] = __bv__?true:false;", field.getNameC());
+		}
 		else
-		{	
+		{
 							f.output("if(!%s->readType(%s[i])) return false;", recvName, field.getNameC());
 		}
 							f.recover();

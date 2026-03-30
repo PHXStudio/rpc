@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net6.0</TargetFramework>
+    <RollForward>LatestMajor</RollForward>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <GeneratedCsDir Condition="'$(GeneratedCsDir)' == ''">INVALID_SET_GeneratedCsDir</GeneratedCsDir>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="$(GeneratedCsDir)/FullCrossLang.cs" Link="FullCrossLang.cs" />
+    <Compile Include="../../runtime/cs/FieldMask.cs" Link="FieldMask.cs" />
+    <Compile Include="../../runtime/cs/IReader.cs" Link="IReader.cs" />
+    <Compile Include="../../runtime/cs/IWriter.cs" Link="IWriter.cs" />
+    <Compile Include="../../runtime/cs/ProtocolReader.cs" Link="ProtocolReader.cs" />
+    <Compile Include="../../runtime/cs/ProtocolWriter.cs" Link="ProtocolWriter.cs" />
+    <Compile Include="TestMemReader.cs" />
+    <Compile Include="TestMemWriter.cs" />
+    <Compile Include="FullCrossLangVerifier.cs" />
+  </ItemGroup>
+</Project>

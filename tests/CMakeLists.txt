@@ -20,6 +20,43 @@ add_custom_command(
   VERBATIM
 )
 
+# ---------- FullTest schema (all types) ----------
+set(_full_schema "${CMAKE_CURRENT_SOURCE_DIR}/schema/FullTest.rpc")
+set(_full_gen_cpp "${CMAKE_CURRENT_BINARY_DIR}/generated/fulltest_cpp")
+set(_full_gen_cpp_slash "${_full_gen_cpp}/")
+
+add_custom_command(
+  OUTPUT
+    "${_full_gen_cpp}/FullTest.h"
+    "${_full_gen_cpp}/FullTest.cpp"
+  COMMAND ${CMAKE_COMMAND} -E make_directory "${_full_gen_cpp}"
+  COMMAND "$<TARGET_FILE:rpc>" -i "${_full_schema}" -o "${_full_gen_cpp_slash}" -g cpp
+  DEPENDS rpc "${_full_schema}"
+  COMMENT "Generating FullTest (cpp) from RPC schema"
+  VERBATIM
+)
+
+# ---------- FullCrossLang schema (C++ <-> C# cross-language) ----------
+set(_fullcl_schema "${CMAKE_CURRENT_SOURCE_DIR}/schema/FullCrossLang.rpc")
+set(_fullcl_gen_cpp "${CMAKE_CURRENT_BINARY_DIR}/generated/fullcl_cpp")
+set(_fullcl_gen_cs "${CMAKE_CURRENT_BINARY_DIR}/generated/fullcl_cs")
+set(_fullcl_gen_cpp_slash "${_fullcl_gen_cpp}/")
+set(_fullcl_gen_cs_slash "${_fullcl_gen_cs}/")
+
+add_custom_command(
+  OUTPUT
+    "${_fullcl_gen_cpp}/FullCrossLang.h"
+    "${_fullcl_gen_cpp}/FullCrossLang.cpp"
+    "${_fullcl_gen_cs}/FullCrossLang.cs"
+  COMMAND ${CMAKE_COMMAND} -E make_directory "${_fullcl_gen_cpp}" "${_fullcl_gen_cs}"
+  COMMAND "$<TARGET_FILE:rpc>" -i "${_fullcl_schema}" -o "${_fullcl_gen_cpp_slash}" -g cpp
+  COMMAND "$<TARGET_FILE:rpc>" -i "${_fullcl_schema}" -o "${_fullcl_gen_cs_slash}" -g cs
+  DEPENDS rpc "${_fullcl_schema}"
+  COMMENT "Generating FullCrossLang (cpp/cs) from RPC schema"
+  VERBATIM
+)
+
+# ---------- GoogleTest ----------
 find_package(GTest QUIET)
 if(NOT GTest_FOUND)
   include(FetchContent)
@@ -32,6 +69,7 @@ if(NOT GTest_FOUND)
   FetchContent_MakeAvailable(googletest)
 endif()
 
+# ---------- .NET SDK detection ----------
 # Prefer DOTNET_ROOT (official install layout) when PATH is not set (e.g. IDEs).
 if(DEFINED ENV{DOTNET_ROOT})
   set(_dotnet_hint "$ENV{DOTNET_ROOT}/dotnet")
@@ -72,6 +110,7 @@ if(RPC_TEST_DOTNET)
   get_filename_component(RPC_TEST_DOTNET_ABS "${RPC_TEST_DOTNET}" ABSOLUTE)
 endif()
 
+# ---------- CrossLangVerifier (.NET) ----------
 set(RPC_TEST_VERIFIER_DLL_ABS "")
 # Match .NET configuration to CMake build (output path under tests/cs/bin/...).
 if(CMAKE_CONFIGURATION_TYPES)
@@ -113,12 +152,53 @@ if(RPC_TEST_DOTNET)
   add_custom_target(rpc_crosslang_verifier_build DEPENDS "${_rpc_verifier_stamp}")
 endif()
 
+# ---------- FullCrossLangVerifier (.NET) ----------
+set(RPC_TEST_FULL_VERIFIER_DLL_ABS "")
+
+if(RPC_TEST_DOTNET)
+  set(_rpc_full_verifier_dll "${CMAKE_CURRENT_SOURCE_DIR}/cs/bin/${RPC_TEST_VERIFIER_CONFIGURATION}/net6.0/FullCrossLangVerifier.dll")
+  get_filename_component(RPC_TEST_FULL_VERIFIER_DLL_ABS "${_rpc_full_verifier_dll}" ABSOLUTE)
+endif()
+
+if(RPC_TEST_DOTNET)
+  set(_rpc_full_verifier_stamp "${CMAKE_CURRENT_BINARY_DIR}/full_crosslang_verifier_dotnet.stamp")
+  file(GLOB _rpc_full_verifier_cs CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/cs/FullCrossLangVerifier.cs"
+  )
+  add_custom_command(
+    OUTPUT "${_rpc_full_verifier_stamp}"
+    COMMAND ${RPC_TEST_DOTNET} build "${CMAKE_CURRENT_SOURCE_DIR}/cs/FullCrossLangVerifier.csproj"
+            --configuration "${RPC_TEST_VERIFIER_CONFIGURATION}"
+            --verbosity minimal
+            "-p:GeneratedCsDir=${_fullcl_gen_cs}"
+    COMMAND ${CMAKE_COMMAND} -E touch "${_rpc_full_verifier_stamp}"
+    DEPENDS
+      "${_fullcl_gen_cs}/FullCrossLang.cs"
+      "${CMAKE_CURRENT_SOURCE_DIR}/cs/FullCrossLangVerifier.csproj"
+      ${_rpc_full_verifier_cs}
+    COMMENT "Building FullCrossLangVerifier (.NET) for integration tests"
+    VERBATIM
+  )
+  add_custom_target(rpc_full_crosslang_verifier_build DEPENDS "${_rpc_full_verifier_stamp}")
+endif()
+
+# ---------- Config header ----------
+set(RPC_TEST_SCHEMA_DIR "${CMAKE_CURRENT_SOURCE_DIR}/schema")
+set(RPC_TEST_OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/compiler_output")
+file(MAKE_DIRECTORY "${RPC_TEST_OUTPUT_DIR}")
+
+# Compiler path is known relative to the build directory.
+set(RPC_TEST_COMPILER_EXE "${PROJECT_BINARY_DIR}/compiler/rpc")
+
 configure_file(
   "${CMAKE_CURRENT_SOURCE_DIR}/tests_config.h.in"
   "${CMAKE_CURRENT_BINARY_DIR}/tests_config.h"
   @ONLY
 )
 
+# ---------- Test executables ----------
+
+# 1. Original serialization + cross-lang tests
 add_executable(rpc_serialization_tests
   runtime/cpp_serialization_memory_test.cpp
   runtime/cross_lang_file_test.cpp
@@ -128,21 +208,82 @@ add_dependencies(rpc_serialization_tests rpc)
 if(RPC_TEST_DOTNET)
   add_dependencies(rpc_serialization_tests rpc_crosslang_verifier_build)
 endif()
-
 target_include_directories(rpc_serialization_tests PRIVATE
   "${CMAKE_SOURCE_DIR}/runtime/cpp"
   "${_gen_cpp}"
   "${CMAKE_CURRENT_BINARY_DIR}"
 )
 target_compile_features(rpc_serialization_tests PRIVATE cxx_std_11)
-
 if(RPC_TEST_DOTNET)
   target_compile_definitions(rpc_serialization_tests PRIVATE RPC_HAVE_DOTNET=1)
 else()
   target_compile_definitions(rpc_serialization_tests PRIVATE RPC_HAVE_DOTNET=0)
 endif()
-
 target_link_libraries(rpc_serialization_tests PRIVATE GTest::gtest_main GTest::gtest)
 
+# 2. Full schema serialization tests
+add_executable(rpc_full_schema_tests
+  runtime/full_schema_test.cpp
+  "${_full_gen_cpp}/FullTest.cpp"
+)
+add_dependencies(rpc_full_schema_tests rpc)
+target_include_directories(rpc_full_schema_tests PRIVATE
+  "${CMAKE_SOURCE_DIR}/runtime/cpp"
+  "${_full_gen_cpp}"
+)
+target_compile_features(rpc_full_schema_tests PRIVATE cxx_std_11)
+target_link_libraries(rpc_full_schema_tests PRIVATE GTest::gtest_main GTest::gtest)
+
+# 3. Full cross-lang tests
+add_executable(rpc_full_crosslang_tests
+  runtime/full_cross_lang_test.cpp
+  "${_fullcl_gen_cpp}/FullCrossLang.cpp"
+)
+add_dependencies(rpc_full_crosslang_tests rpc)
+if(RPC_TEST_DOTNET)
+  add_dependencies(rpc_full_crosslang_tests rpc_full_crosslang_verifier_build)
+endif()
+target_include_directories(rpc_full_crosslang_tests PRIVATE
+  "${CMAKE_SOURCE_DIR}/runtime/cpp"
+  "${_fullcl_gen_cpp}"
+  "${CMAKE_CURRENT_BINARY_DIR}"
+)
+target_compile_features(rpc_full_crosslang_tests PRIVATE cxx_std_11)
+if(RPC_TEST_DOTNET)
+  target_compile_definitions(rpc_full_crosslang_tests PRIVATE RPC_HAVE_DOTNET=1)
+else()
+  target_compile_definitions(rpc_full_crosslang_tests PRIVATE RPC_HAVE_DOTNET=0)
+endif()
+target_link_libraries(rpc_full_crosslang_tests PRIVATE GTest::gtest_main GTest::gtest)
+
+# 4. Compiler tests
+add_executable(rpc_compiler_tests
+  runtime/compiler_test.cpp
+)
+add_dependencies(rpc_compiler_tests rpc)
+target_include_directories(rpc_compiler_tests PRIVATE
+  "${CMAKE_CURRENT_BINARY_DIR}"
+)
+target_compile_features(rpc_compiler_tests PRIVATE cxx_std_11)
+target_link_libraries(rpc_compiler_tests PRIVATE GTest::gtest_main GTest::gtest)
+
+# 5. Service tests
+add_executable(rpc_service_tests
+  runtime/service_test.cpp
+  "${_full_gen_cpp}/FullTest.cpp"
+)
+add_dependencies(rpc_service_tests rpc)
+target_include_directories(rpc_service_tests PRIVATE
+  "${CMAKE_SOURCE_DIR}/runtime/cpp"
+  "${_full_gen_cpp}"
+)
+target_compile_features(rpc_service_tests PRIVATE cxx_std_11)
+target_link_libraries(rpc_service_tests PRIVATE GTest::gtest_main GTest::gtest)
+
+# ---------- Discover tests ----------
 include(GoogleTest)
 gtest_discover_tests(rpc_serialization_tests PROPERTIES LABELS "rpc")
+gtest_discover_tests(rpc_full_schema_tests PROPERTIES LABELS "rpc")
+gtest_discover_tests(rpc_full_crosslang_tests PROPERTIES LABELS "rpc")
+gtest_discover_tests(rpc_compiler_tests PROPERTIES LABELS "rpc")
+gtest_discover_tests(rpc_service_tests PROPERTIES LABELS "rpc")

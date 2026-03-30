@@ -1,0 +1,13 @@
+/* Medium-complexity schema for C++ <-> C# cross-language tests. */
+enum Color { Red, Green, Blue, };
+
+struct FullCrossLangPayload (skipcomp)
+{
+	int32 i32_;
+	uint32 u32_;
+	bool bool_;
+	Color color_;
+	string s_;
+	bytes b_;
+	array<int32> i32Array_;
+};

@@ -1,5 +1,5 @@
 // import other file.
-#import Import.arpc
+#import Import.rpc
 
 /* Structure inheritance. */
 struct DerivedStruct : StructBase

@@ -27,6 +27,8 @@ add_subdirectory(compiler)
 # runtime.
 #add_subdirectory(runtime)
 
-include(CTest)
-enable_testing()
-add_subdirectory(tests)
+if(BUILD_TESTING)
+  include(CTest)
+  enable_testing()
+  add_subdirectory(tests)
+endif()
