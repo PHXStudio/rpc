@@ -8,7 +8,7 @@
 class ProtocolMemReader : public ProtocolReader
 {
 public:
-	ProtocolMemReader(void* b, size_t l):
+	ProtocolMemReader(const void* b, size_t l):
 	buffer_((char*)b),
 	length_(l),
 	rdptr_(0)
