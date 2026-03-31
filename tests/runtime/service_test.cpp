@@ -125,17 +125,23 @@ public:
 	bool method2(StructBase& s) override {
 		last.pid = 1; return true;
 	}
-	bool method3(DerivedStruct& d) override {
-		last.m9_d = d;
+	bool method3(double d, float f, int64_t i64, uint64_t u64) override {
 		last.pid = 2; return true;
 	}
-	bool method4() override {
+	bool method4(int32_t i32, uint32_t u32, int16_t i16, uint16_t u16) override {
 		last.pid = 3; return true;
 	}
 	bool method5(int8_t i8, uint8_t u8, bool b, EnumName e) override { return true; }
 	bool method6(std::string& fixedStr, std::vector<uint8_t>& data) override { return true; }
 	bool method7(std::vector<int32_t>& ints, std::vector<std::string>& strs) override { return true; }
 	bool method8(std::vector<StructType>& structs) override { return true; }
+	bool method9(DerivedStruct& d) override {
+		last.m9_d = d;
+		last.pid = 8; return true;
+	}
+	bool method10() override {
+		last.pid = 9; return true;
+	}
 };
 
 // ---------- Concrete stub for DerivedService ----------
@@ -463,7 +469,7 @@ TEST(ServiceStub, Method8_StructArray) {
 // DerivedService: method9 (DerivedStruct) + method10 (no args)
 // ============================================================
 
-TEST(DerivedServiceStub, Method3_DerivedStruct) {
+TEST(DerivedServiceStub, Method9_DerivedStruct) {
 	TestDerivedStub stub;
 	const DerivedStruct d = []{
 		DerivedStruct d;
@@ -471,9 +477,9 @@ TEST(DerivedServiceStub, Method3_DerivedStruct) {
 		d.aaa_ = 999;
 		return d;
 	}();
-	stub.method3(d);
+	stub.method9(d);
 
-	EXPECT_EQ(stub.lastPid, 2); // pid=2: method1=0, method2=1, method3=2
+	EXPECT_EQ(stub.lastPid, 8); // pid=8 for method9
 
 	ProtocolBytesReader r(stub.lastBuf);
 	TestDerivedServiceProxy proxy;
@@ -483,11 +489,11 @@ TEST(DerivedServiceStub, Method3_DerivedStruct) {
 	EXPECT_EQ(proxy.last.m9_d.enum_, EN2);
 }
 
-TEST(DerivedServiceStub, Method4_NoArgs) {
+TEST(DerivedServiceStub, Method10_NoArgs) {
 	TestDerivedStub stub;
-	stub.method4();
+	stub.method10();
 
-	EXPECT_EQ(stub.lastPid, 3); // pid=3
+	EXPECT_EQ(stub.lastPid, 9); // pid=9 for method10
 
 	ProtocolBytesReader r(stub.lastBuf);
 	TestDerivedServiceProxy proxy;
