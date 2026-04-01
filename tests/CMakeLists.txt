@@ -284,6 +284,20 @@ target_include_directories(rpc_service_tests PRIVATE
 target_compile_features(rpc_service_tests PRIVATE cxx_std_11)
 target_link_libraries(rpc_service_tests PRIVATE GTest::gtest_main GTest::gtest)
 
+# 6. JSON serialization/deserialization tests
+add_executable(rpc_json_tests
+  runtime/json_test.cpp
+  "${_full_gen_cpp}/FullTest.cpp"
+)
+add_dependencies(rpc_json_tests rpc)
+target_include_directories(rpc_json_tests PRIVATE
+  "${CMAKE_SOURCE_DIR}/runtime/cpp"
+  "${_full_gen_cpp}"
+  "${rapidjson_SOURCE_DIR}/include"
+)
+target_compile_features(rpc_json_tests PRIVATE cxx_std_11)
+target_link_libraries(rpc_json_tests PRIVATE GTest::gtest_main GTest::gtest)
+
 # ---------- Discover tests ----------
 include(GoogleTest)
 gtest_discover_tests(rpc_serialization_tests PROPERTIES LABELS "rpc")
@@ -291,3 +305,4 @@ gtest_discover_tests(rpc_full_schema_tests PROPERTIES LABELS "rpc")
 gtest_discover_tests(rpc_full_crosslang_tests PROPERTIES LABELS "rpc")
 gtest_discover_tests(rpc_compiler_tests PROPERTIES LABELS "rpc")
 gtest_discover_tests(rpc_service_tests PROPERTIES LABELS "rpc")
+gtest_discover_tests(rpc_json_tests PROPERTIES LABELS "rpc")

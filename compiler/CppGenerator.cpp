@@ -1,6 +1,7 @@
 #include "CppGenerator.h"
 #include "Compiler.h"
 #include "CodeFile.h"
+#include <limits>
 
 
 static const char* getFieldCppType(Field& f, bool withArray = true)
@@ -431,7 +432,7 @@ static void generateFieldSerializeJson(CodeFile& f, Field& field)
 		}
 		else if (field.getType() == FT_STRING)
 		{
-			f.output("ss << \"\\\"\" << %s[i] << \"\\\"\";", field.getNameC());
+			f.output("ss << \"\\\"\" << escapeJsonString(%s[i]) << \"\\\"\";", field.getNameC());
 		}
 		else if (field.getType() == FT_BOOL)
 		{
@@ -439,7 +440,7 @@ static void generateFieldSerializeJson(CodeFile& f, Field& field)
 		}
 		else if (field.getType() == FT_FLOAT || field.getType() == FT_DOUBLE)
 		{
-			f.output("ss << (double)%s[i];", field.getNameC());
+			f.output("ss << std::setprecision(std::numeric_limits<double>::max_digits10) << (double)%s[i];", field.getNameC());
 		}
 		else
 		{
@@ -463,7 +464,7 @@ static void generateFieldSerializeJson(CodeFile& f, Field& field)
 		}
 		else if (field.getType() == FT_STRING)
 		{
-			f.output("ss << \"\\\"\" << %s << \"\\\"\";", field.getNameC());
+			f.output("ss << \"\\\"\" << escapeJsonString(%s) << \"\\\"\";", field.getNameC());
 		}
 		else if (field.getType() == FT_BOOL)
 		{
@@ -476,7 +477,7 @@ static void generateFieldSerializeJson(CodeFile& f, Field& field)
 		}
 		else if (field.getType() == FT_FLOAT || field.getType() == FT_DOUBLE)
 		{
-			f.output("ss << (double)%s;", field.getNameC());
+			f.output("ss << std::setprecision(std::numeric_limits<double>::max_digits10) << (double)%s;", field.getNameC());
 		}
 		else 
 		{
@@ -543,8 +544,8 @@ static void generateFieldLoadJson(CodeFile& f, Field& field)
 
 	if (field.getArray())
 	{
-		f.output("size_t __len__;");
-		f.output("if(!__rd__.readArraySize(\"%s\", __len__, %d)) return false;", field.getNameC(), field.getMaxArrLength());
+		f.output("if(!__rd__.enterArray(\"%s\")) return false;", field.getNameC());
+		f.output("size_t __len__ = __rd__.getArraySize();");
 		f.output("%s.resize(__len__);", field.getNameC());
 		f.output("for(size_t i = 0; i < __len__; i++)");
 		f.output("{");
@@ -587,6 +588,7 @@ static void generateFieldLoadJson(CodeFile& f, Field& field)
 		f.output("__rd__.leave();");
 		f.recover();
 		f.output("}");
+		f.output("__rd__.leave();");
 	}
 	else
 	{
@@ -809,8 +811,13 @@ static void generateStructDef(CodeFile& f, Struct* s)
 	f.output("{");
 	f.indent();
 	f.output("if(needBracket){ ss << \"{\"; }");
-	if (s->super_)
+	if (s->super_) {
 		f.output("%s::toJson(ss,false);", s->super_->getNameC());
+		// Add comma before first derived field if base has fields and derived has fields
+		if (s->fields_.size() > 0) {
+			f.output("if(%s::FIDMAX > 0) ss << \",\\n\";", s->super_->getNameC());
+		}
+	}
 	generateFieldContainerSerializeJson(f, s);
 	f.output("if(needBracket){ ss << \"}\"; }");
 	f.recover();
@@ -970,6 +977,8 @@ void CppGenerator::generate()
 		f.output("#include \"ProtocolReader.h\"");
 		f.output("#include \"EnumInfo.h\"");
 		f.output("#include \"JsonHelper.h\"");
+		f.output("#include <sstream>");
+		f.output("#include <iomanip>");
 		for(size_t i = 0; i < Compiler::inst().imports_.size(); i++)
 		{
 			std::string incFilename = Compiler::inst().imports_[i];
