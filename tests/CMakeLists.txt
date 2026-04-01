@@ -298,6 +298,29 @@ target_include_directories(rpc_json_tests PRIVATE
 target_compile_features(rpc_json_tests PRIVATE cxx_std_11)
 target_link_libraries(rpc_json_tests PRIVATE GTest::gtest_main GTest::gtest)
 
+# 7. Go code generation tests
+set(_full_gen_go "${CMAKE_CURRENT_BINARY_DIR}/generated/go")
+set(_full_gen_go_slash "${_full_gen_go}/")
+
+add_custom_command(
+  OUTPUT "${_full_gen_go}/fulltest.go"
+  COMMAND ${CMAKE_COMMAND} -E make_directory "${_full_gen_go}"
+  COMMAND "$<TARGET_FILE:rpc>" -i "${_full_schema}" -o "${_full_gen_go_slash}" -g go
+  DEPENDS rpc "${_full_schema}"
+  COMMENT "Generating FullTest (go) from RPC schema"
+  VERBATIM
+)
+
+add_executable(rpc_go_generator_tests
+  generated/go/go_test.cpp
+)
+add_dependencies(rpc_go_generator_tests rpc)
+target_include_directories(rpc_go_generator_tests PRIVATE
+  "${CMAKE_CURRENT_BINARY_DIR}"
+)
+target_compile_features(rpc_go_generator_tests PRIVATE cxx_std_11)
+target_link_libraries(rpc_go_generator_tests PRIVATE GTest::gtest_main GTest::gtest)
+
 # ---------- Discover tests ----------
 include(GoogleTest)
 gtest_discover_tests(rpc_serialization_tests PROPERTIES LABELS "rpc")
@@ -306,3 +329,4 @@ gtest_discover_tests(rpc_full_crosslang_tests PROPERTIES LABELS "rpc")
 gtest_discover_tests(rpc_compiler_tests PROPERTIES LABELS "rpc")
 gtest_discover_tests(rpc_service_tests PROPERTIES LABELS "rpc")
 gtest_discover_tests(rpc_json_tests PROPERTIES LABELS "rpc")
+gtest_discover_tests(rpc_go_generator_tests PROPERTIES LABELS "rpc")
