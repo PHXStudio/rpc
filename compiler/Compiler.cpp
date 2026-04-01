@@ -5,6 +5,7 @@
 #include "CppGenerator.h"
 #include "CSGenerator.h"
 #include "PYGenerator.h"
+#include "GoGenerator.h"
 
 Compiler& Compiler::inst()
 {
@@ -71,6 +72,7 @@ int Compiler::compile()
 	CppGenerator cppGen;
 	CSGenerator csGen;
 	PYGenerator pyGen;
+	GoGenerator goGen;
 	CodeGenerator* gen = &cppGen;
 	if(generator_ == "cpp")
 		gen = &cppGen;
@@ -78,6 +80,8 @@ int Compiler::compile()
 		gen = &csGen;
 	else if(generator_ == "py")
 		gen = &pyGen;
+	else if(generator_ == "go")
+		gen = &goGen;
 
 	// Emit code.
 	try

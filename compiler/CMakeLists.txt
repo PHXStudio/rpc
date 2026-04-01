@@ -37,11 +37,13 @@ set(GEN_FILES
 	CppGenerator.h
 	PYGenerator.h
 	CSGenerator.h
+	GoGenerator.h
 #    ASGenerator.h
 
 	CppGenerator.cpp
 	PYGenerator.cpp
 	CSGenerator.cpp
+	GoGenerator.cpp
  #   ASGenerator.cpp
 	)
 set(MISC_FILES
