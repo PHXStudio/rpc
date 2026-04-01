@@ -225,7 +225,10 @@ static void generateStructDecl(CodeFile& f, Struct* s)
 	f.output("void serialize(ProtocolWriter* s) const;");
 	f.output("// deserialization.");
 	f.output("bool deserialize(ProtocolReader* r);");
-	f.output("void serializeJson(std::ostream& ss, bool needBracket = true)const;");
+	f.output("void toJson(std::ostream& ss, bool needBracket = true)const;");
+	f.output("bool loadJson(const char* json, size_t len);");
+	f.output("bool loadJson(const std::string& json);");
+	f.output("bool loadJson(JsonReader& __rd__);");
 
 
 	/** cppcode. */
@@ -420,7 +423,7 @@ static void generateFieldSerializeJson(CodeFile& f, Field& field)
 		// .
 		if (field.getType() == FT_USER)
 		{
-			f.output("%s[i].serializeJson(ss);", field.getNameC());
+			f.output("%s[i].toJson(ss);", field.getNameC());
 		}
 		else if (field.getType() == FT_ENUM)
 		{
@@ -432,7 +435,7 @@ static void generateFieldSerializeJson(CodeFile& f, Field& field)
 		}
 		else if (field.getType() == FT_BOOL)
 		{
-			f.output("ss << %s[i] ? \"true\" : \"false\";", field.getNameC());
+			f.output("ss << (%s[i] ? \"true\" : \"false\");", field.getNameC());
 		}
 		else if (field.getType() == FT_FLOAT || field.getType() == FT_DOUBLE)
 		{
@@ -456,7 +459,7 @@ static void generateFieldSerializeJson(CodeFile& f, Field& field)
 		f.indent();
 		if (field.getType() == FT_USER)
 		{
-			f.output("%s.serializeJson(ss);", field.getNameC());
+			f.output("%s.toJson(ss);", field.getNameC());
 		}
 		else if (field.getType() == FT_STRING)
 		{
@@ -529,6 +532,110 @@ static void generateFieldContainerSerializeJson(CodeFile& f, FieldContainer* fc)
 	{
 		generateFieldSerializeJson(f, fc->fields_[i]);
 		f.output(((i + 1) == fc->fields_.size()) ? "ss<<\"\\n\";" : " ss << \",\\n\";");
+	}
+}
+
+static void generateFieldLoadJson(CodeFile& f, Field& field)
+{
+	f.output("// loadJson %s", field.getNameC());
+	f.output("if(__rd__.hasMember(\"%s\")){", field.getNameC());
+	f.indent();
+
+	if (field.getArray())
+	{
+		f.output("size_t __len__;");
+		f.output("if(!__rd__.readArraySize(\"%s\", __len__, %d)) return false;", field.getNameC(), field.getMaxArrLength());
+		f.output("%s.resize(__len__);", field.getNameC());
+		f.output("for(size_t i = 0; i < __len__; i++)");
+		f.output("{");
+		f.indent();
+		f.output("if(!__rd__.enterArrayItem(i)) return false;");
+
+		if (field.getType() == FT_USER)
+		{
+			f.output("if(!%s[i].loadJson(__rd__)) return false;", field.getNameC());
+		}
+		else if (field.getType() == FT_ENUM)
+		{
+			f.output("int32_t __val__;");
+			f.output("if(!__rd__.readValueEnum(__val__, &ENUM(%s))) return false;", field.getUserType()->getNameC());
+			f.output("%s[i] = (%s)__val__;", field.getNameC(), getFieldCppType(field, false));
+		}
+		else if (field.getType() == FT_STRING)
+		{
+			f.output("if(!__rd__.readValueString(%s[i], %d)) return false;", field.getNameC(), field.getMaxStrLength());
+		}
+		else if (field.getType() == FT_BOOL)
+		{
+			f.output("bool __bv__;");
+			f.output("if(!__rd__.readValueBool(__bv__)) return false;");
+			f.output("%s[i] = __bv__;", field.getNameC());
+		}
+		else if (field.getType() == FT_FLOAT || field.getType() == FT_DOUBLE)
+		{
+			f.output("double __val__;");
+			f.output("if(!__rd__.readValueDouble(__val__)) return false;");
+			f.output("%s[i] = (%s)__val__;", field.getNameC(), getFieldCppType(field, false));
+		}
+		else
+		{
+			f.output("int64_t __val__;");
+			f.output("if(!__rd__.readValueInt(__val__)) return false;");
+			f.output("%s[i] = (%s)__val__;", field.getNameC(), getFieldCppType(field, false));
+		}
+
+		f.output("__rd__.leave();");
+		f.recover();
+		f.output("}");
+	}
+	else
+	{
+		if (field.getType() == FT_USER)
+		{
+			f.output("if(!__rd__.enterObject(\"%s\")) return false;", field.getNameC());
+			f.output("if(!%s.loadJson(__rd__)) return false;", field.getNameC());
+			f.output("__rd__.leave();");
+		}
+		else if (field.getType() == FT_ENUM)
+		{
+			f.output("int32_t __val__;");
+			f.output("if(!__rd__.readEnum(\"%s\", __val__, &ENUM(%s))) return false;", field.getNameC(), field.getUserType()->getNameC());
+			f.output("%s = (%s)__val__;", field.getNameC(), getFieldCppType(field, false));
+		}
+		else if (field.getType() == FT_STRING)
+		{
+			f.output("if(!__rd__.readString(\"%s\", %s, %d)) return false;", field.getNameC(), field.getNameC(), field.getMaxStrLength());
+		}
+		else if (field.getType() == FT_BOOL)
+		{
+			f.output("if(!__rd__.readBool(\"%s\", %s)) return false;", field.getNameC(), field.getNameC());
+		}
+		else if (field.getType() == FT_FLOAT || field.getType() == FT_DOUBLE)
+		{
+			f.output("double __val__;");
+			f.output("if(!__rd__.readDouble(\"%s\", __val__)) return false;", field.getNameC());
+			f.output("%s = (%s)__val__;", field.getNameC(), getFieldCppType(field, false));
+		}
+		else
+		{
+			f.output("int64_t __val__;");
+			f.output("if(!__rd__.readInt(\"%s\", __val__)) return false;", field.getNameC());
+			f.output("%s = (%s)__val__;", field.getNameC(), getFieldCppType(field, false));
+		}
+	}
+
+	f.recover();
+	f.output("}");
+}
+
+static void generateFieldContainerLoadJson(CodeFile& f, FieldContainer* fc)
+{
+	if (!fc->fields_.size())
+		return;
+
+	for (size_t i = 0; i < fc->fields_.size(); i++)
+	{
+		generateFieldLoadJson(f, fc->fields_[i]);
 	}
 }
 
@@ -698,14 +805,49 @@ static void generateStructDef(CodeFile& f, Struct* s)
 	f.recover();
 	f.output("}");
 
-	f.output("void %s::serializeJson(std::ostream& ss, bool needBracket)const", s->getNameC());
+	f.output("void %s::toJson(std::ostream& ss, bool needBracket)const", s->getNameC());
 	f.output("{");
 	f.indent();
 	f.output("if(needBracket){ ss << \"{\"; }");
 	if (s->super_)
-		f.output("%s::serializeJson(ss,false);", s->super_->getNameC());
+		f.output("%s::toJson(ss,false);", s->super_->getNameC());
 	generateFieldContainerSerializeJson(f, s);
 	f.output("if(needBracket){ ss << \"}\"; }");
+	f.recover();
+	f.output("}");
+
+	/** .
+		bool loadJson(JsonReader& __rd__);
+	*/
+	f.output("bool %s::loadJson(JsonReader& __rd__)", s->getNameC());
+	f.output("{");
+	f.indent();
+	if (s->super_)
+		f.output("if(!%s::loadJson(__rd__)) return false;", s->super_->getNameC());
+	generateFieldContainerLoadJson(f, s);
+	f.output("return true;");
+	f.recover();
+	f.output("}");
+
+	/** .
+		bool loadJson(const char* json, size_t len);
+	*/
+	f.output("bool %s::loadJson(const char* json, size_t len)", s->getNameC());
+	f.output("{");
+	f.indent();
+	f.output("JsonReader __rd__(json, len);");
+	f.output("if(!__rd__.isValid()) return false;");
+	f.output("return loadJson(__rd__);");
+	f.recover();
+	f.output("}");
+
+	/** .
+		bool loadJson(const std::string& json);
+	*/
+	f.output("bool %s::loadJson(const std::string& json)", s->getNameC());
+	f.output("{");
+	f.indent();
+	f.output("return loadJson(json.c_str(), json.length());");
 	f.recover();
 	f.output("}");
 }
@@ -827,6 +969,7 @@ void CppGenerator::generate()
 		f.output("#include \"ProtocolWriter.h\"");
 		f.output("#include \"ProtocolReader.h\"");
 		f.output("#include \"EnumInfo.h\"");
+		f.output("#include \"JsonHelper.h\"");
 		for(size_t i = 0; i < Compiler::inst().imports_.size(); i++)
 		{
 			std::string incFilename = Compiler::inst().imports_[i];

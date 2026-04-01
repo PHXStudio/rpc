@@ -212,6 +212,7 @@ target_include_directories(rpc_serialization_tests PRIVATE
   "${CMAKE_SOURCE_DIR}/runtime/cpp"
   "${_gen_cpp}"
   "${CMAKE_CURRENT_BINARY_DIR}"
+	  "${rapidjson_SOURCE_DIR}/include"
 )
 target_compile_features(rpc_serialization_tests PRIVATE cxx_std_11)
 if(RPC_TEST_DOTNET)
@@ -230,6 +231,7 @@ add_dependencies(rpc_full_schema_tests rpc)
 target_include_directories(rpc_full_schema_tests PRIVATE
   "${CMAKE_SOURCE_DIR}/runtime/cpp"
   "${_full_gen_cpp}"
+  "${rapidjson_SOURCE_DIR}/include"
 )
 target_compile_features(rpc_full_schema_tests PRIVATE cxx_std_11)
 target_link_libraries(rpc_full_schema_tests PRIVATE GTest::gtest_main GTest::gtest)
@@ -247,6 +249,7 @@ target_include_directories(rpc_full_crosslang_tests PRIVATE
   "${CMAKE_SOURCE_DIR}/runtime/cpp"
   "${_fullcl_gen_cpp}"
   "${CMAKE_CURRENT_BINARY_DIR}"
+  "${rapidjson_SOURCE_DIR}/include"
 )
 target_compile_features(rpc_full_crosslang_tests PRIVATE cxx_std_11)
 if(RPC_TEST_DOTNET)
@@ -276,6 +279,7 @@ add_dependencies(rpc_service_tests rpc)
 target_include_directories(rpc_service_tests PRIVATE
   "${CMAKE_SOURCE_DIR}/runtime/cpp"
   "${_full_gen_cpp}"
+  "${rapidjson_SOURCE_DIR}/include"
 )
 target_compile_features(rpc_service_tests PRIVATE cxx_std_11)
 target_link_libraries(rpc_service_tests PRIVATE GTest::gtest_main GTest::gtest)
