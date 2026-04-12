@@ -12,3 +12,9 @@ _deps/
 # .NET build output (CrossLangVerifier)
 tests/cs/bin/
 tests/cs/obj/
+
+# Test executables
+tests/version_compat_simple
+tests/version_compatibility_test
+tests/cpp_serialization_check
+tests/binary_serialization_test
