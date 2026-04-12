@@ -741,8 +741,17 @@ static void generateStructDecl(CodeFile& f, Struct* s)
     }
 
     // Write field mask
-    if(!s->skipComp_ && s->fields_.size() > 0)
+    if(s->fields_.size() > 0)
     {
+        // Write field mask length prefix for version compatibility
+        f.output("// Write field mask length");
+        f.output("fmLen := uint8((FID%sMax-1)/8+1)", s->getNameC());
+        f.output("if err := writer.WriteUint8(fmLen); err != nil {");
+        f.indent();
+        f.output("return err");
+        f.recover();
+        f.output("}");
+
         f.output("// Write field mask");
         f.output("fm := arpc.NewFieldMask(FID%sMax)", s->getNameC());
         for(size_t i = 0; i < s->fields_.size(); i++)
@@ -808,15 +817,48 @@ static void generateStructDecl(CodeFile& f, Struct* s)
     }
 
     // Read field mask
-    if(!s->skipComp_ && s->fields_.size() > 0)
+    if(s->fields_.size() > 0)
     {
-        f.output("// Read field mask");
-        f.output("fmBytes := make([]byte, (FID%sMax-1)/8+1)", s->getNameC());
-        f.output("if _, err := reader.Read(fmBytes); err != nil {");
+        // Read field mask length prefix for version compatibility
+        f.output("// Read field mask length");
+        f.output("actualFmLen, err := reader.ReadUint8()");
+        f.output("if err != nil {");
         f.indent();
         f.output("return err");
         f.recover();
         f.output("}");
+        f.output("myFmLen := uint8((FID%sMax-1)/8+1)", s->getNameC());
+        f.output("readFmLen := actualFmLen");
+        f.output("if actualFmLen > myFmLen {");
+        f.indent();
+        f.output("readFmLen = myFmLen");
+        f.recover();
+        f.output("}");
+
+        f.output("// Read field mask");
+        f.output("fmBytes := make([]byte, myFmLen)");
+        f.output("if _, err := reader.Read(fmBytes[:readFmLen]); err != nil {");
+        f.indent();
+        f.output("return err");
+        f.recover();
+        f.output("}");
+
+        // Skip remaining field mask bytes
+        f.output("// Skip remaining field mask bytes");
+        f.output("if actualFmLen > readFmLen {");
+        f.indent();
+        f.output("if reader, ok := reader.(*arpc.MemReader); ok {");
+        f.indent();
+        f.output("if err := reader.Skip(uint32(actualFmLen - readFmLen)); err != nil {");
+        f.indent();
+        f.output("return err");
+        f.recover();
+        f.output("}");
+        f.recover();
+        f.output("}");
+        f.recover();
+        f.output("}");
+
         f.output("fm := &arpc.FieldMask{}");
         f.output("fm.SetBytes(fmBytes)");
         f.output("");
@@ -828,18 +870,12 @@ static void generateStructDecl(CodeFile& f, Struct* s)
         Field& field = s->fields_[i];
         std::string goName = toGoFieldName(field.getNameC());
 
-        if(!s->skipComp_)
-        {
-            f.output("if fm.ReadBit() {");
-            f.indent();
-            generateFieldDeserialize(f, field, "reader", false);
-            f.recover();
-            f.output("}");
-        }
-        else
-        {
-            generateFieldDeserialize(f, field, "reader", false);
-        }
+        // Always use field mask for version compatibility
+        f.output("if fm.ReadBit() {");
+        f.indent();
+        generateFieldDeserialize(f, field, "reader", false);
+        f.recover();
+        f.output("}");
     }
 
     f.output("return nil");

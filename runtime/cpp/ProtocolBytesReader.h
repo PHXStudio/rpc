@@ -21,6 +21,14 @@ public:
 		return true;
 	}
 
+	virtual bool skip(size_t len) override
+	{
+		if(rdPtr_ + len > bytes_.size())
+			return false;
+		rdPtr_ += len;
+		return true;
+	}
+
 private:
 	std::vector<uint8_t>& bytes_;
 	size_t					rdPtr_;

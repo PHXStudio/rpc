@@ -6,6 +6,14 @@ namespace bin
     /** This class can read basic types by using a bin.IReader object. */
     public static class ProtocolReader
     {
+        /** Skip specified number of bytes in the stream.
+            Used for version compatibility to skip unknown fields.
+        */
+        public static bool Skip(bin.IReader r, uint len)
+        {
+            return r.Skip(len);
+        }
+
         public static bool readType(bin.IReader r, out byte[] v, uint len)
         {
             v = new byte[len];

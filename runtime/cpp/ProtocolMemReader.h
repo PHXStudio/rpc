@@ -23,6 +23,14 @@ public:
 		return true;
 	}
 
+	virtual bool skip(size_t len) override
+	{
+		if(length_ < rdptr_ + len)
+			return false;
+		rdptr_ += len;
+		return true;
+	}
+
 	template <typename T>
 	bool readVector(std::vector<T>& vOut)
 	{

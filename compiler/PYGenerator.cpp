@@ -80,14 +80,18 @@ static void generateStruct(CodeFile& f, Struct* s)
 	f.indent();
 	if(s->super_)
 		f.output("%s.serialize(self, _b_)", s->super_->getNameC());
-	if(!s->skipComp_)
+
+	// Always write field mask for version compatibility
 	{
+		// Write field mask length prefix for version compatibility
+		f.output("# Write field mask length");
+		f.output("_b_.append(struct.pack('B', %d))", s->getFMByteNum());
+
 		f.output("_fm_ = FieldMaskWriter(%d)", s->getFMByteNum());
 		f.output("_pfm_ = len(_b_)");
 		f.output("_b_.append(\'\')");
 	}
-	else
-		f.output("_fm_ = None");
+
 	for(size_t i = 0; i < s->fields_.size(); i++)
 	{
 		Field& field = s->fields_[i];
@@ -97,21 +101,33 @@ static void generateStruct(CodeFile& f, Struct* s)
 			field.getNameC()
 			);
 	}
-	if(!s->skipComp_)
-		f.output("_b_[_pfm_] = _fm_.write()");
+	f.output("_b_[_pfm_] = _fm_.write()");
 	f.recover();
 	// deserialize
 	f.output("def deserialize(self, _b_, _p_):");
 	f.indent();
 	if(s->super_)
 		f.output("_p_ = %s.deserialize(self, _b_, _p_)", s->super_->getNameC());
-	if(!s->skipComp_)
+
+	// Always read field mask for version compatibility
 	{
-		f.output("_fm_ = FieldMaskReader(_b_, _p_, %d)", s->getFMByteNum());
-		f.output("_p_ += %d", s->getFMByteNum());
+		// Read field mask length prefix for version compatibility
+		f.output("# Read field mask length");
+		f.output("_actual_fm_len_ = struct.unpack('B', _b_[_p_:_p_+1])[0]");
+		f.output("_p_ += 1");
+		f.output("_read_fm_len_ = min(_actual_fm_len_, %d)", s->getFMByteNum());
+
+		f.output("_fm_ = FieldMaskReader(_b_, _p_, _read_fm_len_)");
+		f.output("_p_ += _read_fm_len_");
+
+		// Skip remaining field mask bytes
+		f.output("# Skip remaining field mask bytes");
+		f.output("if _actual_fm_len_ > _read_fm_len_:");
+		f.indent();
+		f.output("_p_ = skipReader(_b_, _p_, _actual_fm_len_ - _read_fm_len_)");
+		f.recover();
 	}
-	else
-		f.output("_fm_ = None");
+
 	for(size_t i = 0; i < s->fields_.size(); i++)
 	{
 		Field& field = s->fields_[i];

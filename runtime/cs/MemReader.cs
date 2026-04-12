@@ -22,6 +22,14 @@ namespace bin
             return true;
         }
 
+        public bool Skip(uint len)
+        {
+            if(length_ < rdptr_ + len)
+                return false;
+            rdptr_ += len;
+            return true;
+        }
+
         private byte[] buffer_;
         private uint length_ = 0;
         private uint rdptr_ = 0;

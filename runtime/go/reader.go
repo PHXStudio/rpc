@@ -206,3 +206,13 @@ func (r *MemReader) ReadDynSize() (uint32, error) {
 
 	return size, nil
 }
+
+// Skip skips n bytes in the stream.
+// Used for version compatibility to skip unknown fields.
+func (r *MemReader) Skip(n uint32) error {
+	if r.pos+int(n) > len(r.buf) {
+		return io.EOF
+	}
+	r.pos += int(n)
+	return nil
+}

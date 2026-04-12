@@ -16,6 +16,13 @@ public:
 	*/
 	virtual bool read(void* data, size_t len) = 0;
 
+	/** Skip specified number of bytes in the stream.
+		Used for version compatibility to skip unknown fields.
+		@param len Number of bytes to skip.
+		@return true if successful, false if not enough data.
+	*/
+	virtual bool skip(size_t len) = 0;
+
 	/** @name read basic types. */
 	//@{
 	bool readType(int64_t& v)

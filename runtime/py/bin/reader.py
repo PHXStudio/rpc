@@ -91,3 +91,13 @@ def read(rdr, b, p, arrMax, valMax, fm):
             return [], p
     else:
         return rdr(b, p, valMax, fm)
+
+def skipReader(b, p, n):
+    """Skip n bytes in the buffer.
+    Used for version compatibility to skip unknown fields.
+    Returns the new position.
+    """
+    new_p = p + n
+    if new_p > len(b):
+        raise ValueError("Cannot skip beyond buffer")
+    return new_p

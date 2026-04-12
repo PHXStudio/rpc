@@ -494,8 +494,13 @@ static void generateFieldContainerSerialize(CodeFile& f, FieldContainer* fc, con
 	if(!fc->fields_.size())
 		return;
 
-	if(!skipComp)
+	// Always write field mask for version compatibility
 	{
+		// Write field mask length prefix for version compatibility
+		f.output("//field mask length");
+		f.output("uint8_t __fm_len__ = %d;", fc->getFMByteNum());
+		f.output("%s->writeType(__fm_len__);", senderName);
+
 		// fields FieldMask .
 		f.output("//field mask");
 		f.output("FieldMask<%d> __fm__;", fc->getFMByteNum());
@@ -739,12 +744,26 @@ static void generateFieldContainerDeserialize(CodeFile& f, FieldContainer* fc, c
 	if(!fc->fields_.size())
 		return;
 
-	if(!skipComp)
+	// Always read field mask for version compatibility
 	{
-		// field field mask.
+		int myFmByteNum = fc->getFMByteNum();
+
+		// Read field mask length prefix for version compatibility
 		f.output("//field mask");
-		f.output("FieldMask<%d> __fm__;", fc->getFMByteNum());
-		f.output("if(!%s->read(__fm__.masks_, %d)) return false;", recvName, fc->getFMByteNum());
+		f.output("uint8_t __actual_fm_len__ = 0;");
+		f.output("if(!%s->readType(__actual_fm_len__)) return false;", recvName);
+		f.output("uint8_t __read_fm_len__ = std::min(__actual_fm_len__, (uint8_t)%d);", myFmByteNum);
+
+		f.output("FieldMask<%d> __fm__;", myFmByteNum);
+		f.output("if(!%s->read(__fm__.masks_, __read_fm_len__)) return false;", recvName);
+
+		// Skip remaining field mask bytes (old version reading new data)
+		f.output("if(__actual_fm_len__ > __read_fm_len__){");
+		f.output("    if(!%s->skip(__actual_fm_len__ - __read_fm_len__)) return false;", recvName);
+		f.output("}");
+
+		// Zero out unread bytes (new version reading old data)
+		f.output("for(int i = __read_fm_len__; i < %d; i++) __fm__.masks_[i] = 0;", myFmByteNum);
 	}
 
 	// field.
