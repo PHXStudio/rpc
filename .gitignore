@@ -1,5 +1,14 @@
 build/
 
+# Generated code output directories
+output_cpp/
+output_cs/
+output_py/
+output/
+
+# CMake dependencies
+_deps/
+
 # .NET build output (CrossLangVerifier)
 tests/cs/bin/
 tests/cs/obj/
