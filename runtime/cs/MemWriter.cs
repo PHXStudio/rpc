@@ -1,9 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
 using UnityEngine;
-namespace bin
+namespace rpc
 {
-    public class MemWriter : bin.IWriter
+    public class MemWriter : rpc.IWriter
     {
         public MemWriter()
         {

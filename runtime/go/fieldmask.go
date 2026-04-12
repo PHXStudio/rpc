@@ -1,4 +1,4 @@
-package arpc
+package rpc
 
 // FieldMask provides bit-level field presence tracking.
 // It packs boolean values into bytes for efficient serialization.

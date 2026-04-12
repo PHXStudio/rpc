@@ -1,3 +1,3 @@
-module github.com/arpc/runtime
+module github.com/rpc/runtime
 
 go 1.21

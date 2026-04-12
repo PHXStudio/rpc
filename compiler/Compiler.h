@@ -208,7 +208,7 @@ namespace File
 #include "Struct.h"
 #include "Service.h"
 
-/** arpc compiler: flex/bison parse, AST, emit generated sources. */
+/** rpc compiler: flex/bison parse, AST, emit generated sources. */
 class Generator;
 class Compiler
 {

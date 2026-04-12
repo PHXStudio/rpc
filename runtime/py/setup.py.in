@@ -1,6 +1,6 @@
 from distutils.core import setup
 setup(
 		name='bin',
-		version = '@BINTALK_VERSION_MAJOR@.@BINTALK_VERSION_MINOR@',
+		version = '@RPC_VERSION_MAJOR@.@RPC_VERSION_MINOR@',
 		packages = ['bin'],
 		)

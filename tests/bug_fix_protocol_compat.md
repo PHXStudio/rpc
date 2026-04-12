@@ -56,7 +56,7 @@ static void generateFieldContainerSerializeCode(CodeFile& f, FieldContainer* fc,
         // Write field mask length prefix for version compatibility
         f.output("// Write field mask length");
         f.output("byte __fm_len__ = (byte)%d;", fc->getFMByteNum());
-        f.output("bin.ProtocolWriter.writeType(%s, __fm_len__);", wn);
+        f.output("rpc.ProtocolWriter.writeType(%s, __fm_len__);", wn);
         ...
     }
     ...
@@ -131,10 +131,10 @@ static void generateFieldContainerDeserializeCode(CodeFile& f, FieldContainer* f
 2. **重新生成代码**:
    ```bash
    # 重新生成所有语言的代码
-   ./bin/arpcc -i Example.rpc -o output/ -g cpp
-   ./bin/arpcc -i Example.rpc -o output/ -g cs
-   ./bin/arpcc -i Example.rpc -o output/ -g go
-   ./bin/arpcc -i Example.rpc -o output/ -g py
+   ./build/compiler/rpc -i tests/schema/FullTest.rpc -o output/ -g cpp
+   ./build/compiler/rpc -i tests/schema/FullTest.rpc -o output/ -g cs
+   ./build/compiler/rpc -i tests/schema/FullTest.rpc -o output/ -g go
+   ./build/compiler/rpc -i tests/schema/FullTest.rpc -o output/ -g py
    ```
 
 3. **测试验证**:

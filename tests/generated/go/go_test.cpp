@@ -68,7 +68,7 @@ TEST(GoGenerationTest, FullTestGenerates) {
 	// Verify imports
 	EXPECT_TRUE(contains(content, "\"encoding/json\""))
 		<< "Missing json import";
-	EXPECT_TRUE(contains(content, "\"github.com/arpc/runtime\""))
+	EXPECT_TRUE(contains(content, "\"github.com/rpc/runtime\""))
 		<< "Missing runtime import";
 
 	// Verify enum generation
@@ -111,7 +111,7 @@ TEST(GoGenerationTest, ContainsFieldMask) {
 	std::string content = readFile(outputFile);
 
 	// Verify field mask usage
-	EXPECT_TRUE(contains(content, "arpc.NewFieldMask"))
+	EXPECT_TRUE(contains(content, "rpc.NewFieldMask"))
 		<< "Missing field mask creation";
 	EXPECT_TRUE(contains(content, "fm.WriteBit"))
 		<< "Missing field mask write";
@@ -140,7 +140,7 @@ TEST(GoGenerationTest, ContainsServiceMethods) {
 	// Verify dispatch methods
 	EXPECT_TRUE(contains(content, "func (d *ServiceBaseDispatcher) dispatchmethod1"))
 		<< "Missing dispatch method";
-	EXPECT_TRUE(contains(content, "Dispatch(reader arpc.ProtocolReader"))
+	EXPECT_TRUE(contains(content, "Dispatch(reader rpc.ProtocolReader"))
 		<< "Missing Dispatch method";
 }
 

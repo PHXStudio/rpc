@@ -8,7 +8,7 @@
 |------|------|
 | CMake ≥ 3.16 | 构建 |
 | C++11 编译器 | `rpc` 可执行文件与测试 |
-| **Bison**、**Flex** | 解析器生成（`compiler/bin.y`、`compiler/bin.l`） |
+| **Bison**、**Flex** | 解析器生成（`compiler/rpc.y`、`compiler/rpc.l`） |
 | GoogleTest | 测试（未安装时 CMake 会通过 FetchContent 拉取） |
 | [.NET SDK](https://dotnet.microsoft.com/download)（可选） | 跨语言（C++ ↔ C#）集成测试 |
 
@@ -58,7 +58,7 @@ rpc -i <输入文件> -o <输出目录/> -g <后端>
 示例：
 
 ```bash
-./build/compiler/rpc -i bin/Example.rpc -o ./out/ -g cpp
+./build/compiler/rpc -i tests/schema/FullTest.rpc -o ./out/ -g cpp
 ```
 
 （具体可执行文件路径取决于生成器与是否安装；多配置工程下可能在 `build/compiler/Debug/rpc` 等位置。）
@@ -71,7 +71,7 @@ rpc -i <输入文件> -o <输出目录/> -g <后端>
 | `runtime/cpp/` | C++ 协议读写头文件 |
 | `runtime/cs/` | C# 运行时源码 |
 | `tests/` | GoogleTest：内存序列化 + 可选的跨语言文件交换 |
-| `bin/` | 示例模式（如 `Example.rpc`） |
+| `tests/schema/` | 示例模式（如 `FullTest.rpc`） |
 
 ## 测试
 
@@ -96,5 +96,5 @@ cmake -S . -B build -DRPC_TEST_DOTNET=/path/to/dotnet
 ## 模式文件说明
 
 - 可使用 **`#import`** 引入其他定义文件（示例见 `bin/Example.rpc`）。
-- 可定义 **struct**、**service**、**enum** 等；具体语法以 `compiler/bin.y` 与示例为准。
+- 可定义 **struct**、**service**、**enum** 等；具体语法以 `compiler/rpc.y` 与示例为准。
 

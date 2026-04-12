@@ -1,6 +1,6 @@
-// Package arpc provides the core protocol interfaces for ARPC (Asynchronous RPC)
+// Package rpc provides the core protocol interfaces for RPC serialization
 // This package contains the reader and writer interfaces used by generated code.
-package arpc
+package rpc
 
 // ProtocolWriter writes binary RPC payloads.
 // Implementations should write data in little-endian byte order for compatibility.

@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace bin
+namespace rpc
 {
 	/** IWriter backed by a growable buffer (no Unity dependency). */
 	public sealed class TestMemWriter : IWriter

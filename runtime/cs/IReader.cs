@@ -1,4 +1,4 @@
-﻿namespace bin 
+﻿namespace rpc 
 {
     /** Abstract interface for reading binary data. */
     public interface IReader

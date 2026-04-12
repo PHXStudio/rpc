@@ -1,9 +1,9 @@
 #ifndef __COMMON_H__
 #define __COMMON_H__
 
-/** @page arpc Asynchronous RPC overview.
+/** @page rpc Asynchronous RPC overview.
 
-The arpc system (asynchronous remote procedure calling) is CORBA-like: it maps networking to
+The rpc system (asynchronous remote procedure calling) is CORBA-like: it maps networking to
 object-style calls and keeps protocol code small.
 
 @section aprc_ref References
@@ -14,7 +14,7 @@ These are mature, but for games they are often too heavy, not fast enough, and h
 with a custom IDL.
 
 @section desc Design
-arpc targets a small RPC core: marshal/unmarshal and dispatch only; everything else is out of scope.
+rpc targets a small RPC core: marshal/unmarshal and dispatch only; everything else is out of scope.
 
 @par Features
 - Message parsing is mostly generated; fewer hand-written parsers.
@@ -27,7 +27,7 @@ Treat peers as async request/event handlers.
 
 @par Components
 An IDL compiler plus a small runtime library.
-@image html arpc.png
+@image html rpc.png
 @see Sepcification ProtocolWriter ProtocolReader
 
 @subsection aprc_stub Service stub

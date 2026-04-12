@@ -1,4 +1,4 @@
-namespace bin
+namespace rpc
 {
     /** FieldMask is an object that is used to indicate whether an bin field 
         is present in an bin protocol diagram. The purpose of using this object

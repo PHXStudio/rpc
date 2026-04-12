@@ -1,4 +1,4 @@
-package arpc
+package rpc
 
 import (
 	"sync"

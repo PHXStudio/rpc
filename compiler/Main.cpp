@@ -4,7 +4,7 @@
 #include <iterator>
 #include "Args.h"
 
-/** arpcc entry point. */
+/** rpc entry point. */
 int main( int argc, char *argv[] )
 {
 

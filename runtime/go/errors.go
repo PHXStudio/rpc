@@ -1,8 +1,8 @@
-package arpc
+package rpc
 
 import "errors"
 
-// Standard error definitions for ARPC operations.
+// Standard error definitions for RPC operations.
 // These errors can be used for error checking with errors.Is().
 var (
 	// ErrBufferOverflow is returned when a read operation exceeds the buffer size.

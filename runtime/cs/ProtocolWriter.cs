@@ -1,24 +1,24 @@
 using System;
 using System.Text;
 
-namespace bin
+namespace rpc
 {
-    /** This class can write basic types by using a bin.IWriter object. */
+    /** This class can write basic types by using a rpc.IWriter object. */
     public static class ProtocolWriter
     {
-        public static void writeType(bin.IWriter w, byte[] d) { w.write(d); }
-    	public static void writeType(bin.IWriter w, long v)   { w.write(BitConverter.GetBytes(v)); }
-    	public static void writeType(bin.IWriter w, ulong v)  { w.write(BitConverter.GetBytes(v)); }
-    	public static void writeType(bin.IWriter w, double v) { w.write(BitConverter.GetBytes(v)); }
-    	public static void writeType(bin.IWriter w, float v)  { w.write(BitConverter.GetBytes(v)); }
-    	public static void writeType(bin.IWriter w, int v)    { w.write(BitConverter.GetBytes(v)); }
-    	public static void writeType(bin.IWriter w, uint v)   { w.write(BitConverter.GetBytes(v)); }
-    	public static void writeType(bin.IWriter w, short v)  { w.write(BitConverter.GetBytes(v)); }
-    	public static void writeType(bin.IWriter w, ushort v) { w.write(BitConverter.GetBytes(v)); }
-    	public static void writeType(bin.IWriter w, sbyte v)  { w.write(new byte[1]{(byte)v}); }
-    	public static void writeType(bin.IWriter w, byte v)   { w.write(new byte[1]{v}); }
-    	public static void writeType(bin.IWriter w, bool v)   { writeType(w, (byte)(v?1:0)); }
-    	public static void writeType(bin.IWriter w, string v)
+        public static void writeType(rpc.IWriter w, byte[] d) { w.write(d); }
+    	public static void writeType(rpc.IWriter w, long v)   { w.write(BitConverter.GetBytes(v)); }
+    	public static void writeType(rpc.IWriter w, ulong v)  { w.write(BitConverter.GetBytes(v)); }
+    	public static void writeType(rpc.IWriter w, double v) { w.write(BitConverter.GetBytes(v)); }
+    	public static void writeType(rpc.IWriter w, float v)  { w.write(BitConverter.GetBytes(v)); }
+    	public static void writeType(rpc.IWriter w, int v)    { w.write(BitConverter.GetBytes(v)); }
+    	public static void writeType(rpc.IWriter w, uint v)   { w.write(BitConverter.GetBytes(v)); }
+    	public static void writeType(rpc.IWriter w, short v)  { w.write(BitConverter.GetBytes(v)); }
+    	public static void writeType(rpc.IWriter w, ushort v) { w.write(BitConverter.GetBytes(v)); }
+    	public static void writeType(rpc.IWriter w, sbyte v)  { w.write(new byte[1]{(byte)v}); }
+    	public static void writeType(rpc.IWriter w, byte v)   { w.write(new byte[1]{v}); }
+    	public static void writeType(rpc.IWriter w, bool v)   { writeType(w, (byte)(v?1:0)); }
+    	public static void writeType(rpc.IWriter w, string v)
     	{
             if (v == null || v.Length == 0)
                 writeDynSize(w, 0);
@@ -31,7 +31,7 @@ namespace bin
                     w.write(str);
             }
     	}
-        public static void writeDynSize(bin.IWriter w, uint s)
+        public static void writeDynSize(rpc.IWriter w, uint s)
         {
             byte[] b = BitConverter.GetBytes(s);
             int n = 0;

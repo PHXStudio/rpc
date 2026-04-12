@@ -259,8 +259,8 @@ void PYGenerator::generate()
 	CodeFile f(fn);
 
 	// import.
-	f.output("from arpc.writer import *");
-	f.output("from arpc.reader import *");
+	f.output("from rpc.writer import *");
+	f.output("from rpc.reader import *");
 	for(std::set<std::string>::iterator iter = Compiler::inst().importedFiles_.begin();
 		iter != Compiler::inst().importedFiles_.end(); ++iter)
 	{

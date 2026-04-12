@@ -5,21 +5,21 @@
 # find bison & flex.
 find_package(BISON REQUIRED)
 find_package(FLEX REQUIRED)
-bison_target(BINTALK_PARSER bin.y "${CMAKE_CURRENT_BINARY_DIR}/bin.tab.cpp")
+bison_target(RPC_PARSER rpc.y "${CMAKE_CURRENT_BINARY_DIR}/rpc.tab.cpp")
 if(MSVC)
-	flex_target(BINTALK_SCANNER bin.l "${CMAKE_CURRENT_BINARY_DIR}/lex.yy.cpp" COMPILE_FLAGS "--nounistd")
+	flex_target(RPC_SCANNER rpc.l "${CMAKE_CURRENT_BINARY_DIR}/lex.yy.cpp" COMPILE_FLAGS "--nounistd")
 else()
-	flex_target(BINTALK_SCANNER bin.l "${CMAKE_CURRENT_BINARY_DIR}/lex.yy.cpp")
+	flex_target(RPC_SCANNER rpc.l "${CMAKE_CURRENT_BINARY_DIR}/lex.yy.cpp")
 endif()
-add_flex_bison_dependency(BINTALK_SCANNER BINTALK_PARSER)
+add_flex_bison_dependency(RPC_SCANNER RPC_PARSER)
 
 
 # sources.
 set(PARSER_FILES
-	${BISON_BINTALK_PARSER_OUTPUTS}
-	${FLEX_BINTALK_SCANNER_OUTPUTS}
-	bin.y
-	bin.l
+	${BISON_RPC_PARSER_OUTPUTS}
+	${FLEX_RPC_SCANNER_OUTPUTS}
+	rpc.y
+	rpc.l
 	)
 set(SPEC_FILES
 	Definition.h

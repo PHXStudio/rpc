@@ -1,20 +1,20 @@
 using System;
 using System.Text;
 
-namespace bin
+namespace rpc
 {
-    /** This class can read basic types by using a bin.IReader object. */
+    /** This class can read basic types by using a rpc.IReader object. */
     public static class ProtocolReader
     {
         /** Skip specified number of bytes in the stream.
             Used for version compatibility to skip unknown fields.
         */
-        public static bool Skip(bin.IReader r, uint len)
+        public static bool Skip(rpc.IReader r, uint len)
         {
             return r.Skip(len);
         }
 
-        public static bool readType(bin.IReader r, out byte[] v, uint len)
+        public static bool readType(rpc.IReader r, out byte[] v, uint len)
         {
             v = new byte[len];
             byte[] data; int startId;
@@ -23,7 +23,7 @@ namespace bin
             Array.Copy(data, startId, v, 0, len);
             return true;
         }
-    	public static bool readType(bin.IReader r, out long v)
+    	public static bool readType(rpc.IReader r, out long v)
     	{
             v = 0;
             byte[] data; int startId;
@@ -32,7 +32,7 @@ namespace bin
             v = BitConverter.ToInt64(data, startId);
             return true;
     	}
-    	public static bool readType(bin.IReader r, out ulong v)
+    	public static bool readType(rpc.IReader r, out ulong v)
     	{
             v = 0;
             byte[] data; int startId;
@@ -41,7 +41,7 @@ namespace bin
             v = BitConverter.ToUInt64(data, startId);
             return true;
     	}
-    	public static bool readType(bin.IReader r, out double v)
+    	public static bool readType(rpc.IReader r, out double v)
     	{
             v = 0.0;
             byte[] data; int startId;
@@ -50,7 +50,7 @@ namespace bin
             v = BitConverter.ToDouble(data, startId);
             return true;
     	}
-    	public static bool readType(bin.IReader r, out float v)
+    	public static bool readType(rpc.IReader r, out float v)
     	{
             v = 0.0f;
             byte[] data; int startId;
@@ -59,7 +59,7 @@ namespace bin
             v = BitConverter.ToSingle(data, startId);
             return true;
     	}
-    	public static bool readType(bin.IReader r, out int v)
+    	public static bool readType(rpc.IReader r, out int v)
     	{
             v = 0;
             byte[] data; int startId;
@@ -68,7 +68,7 @@ namespace bin
             v = BitConverter.ToInt32(data, startId);
             return true;
     	}
-    	public static bool readType(bin.IReader r, out uint v)
+    	public static bool readType(rpc.IReader r, out uint v)
     	{
             v = 0;
             byte[] data; int startId;
@@ -77,7 +77,7 @@ namespace bin
             v = BitConverter.ToUInt32(data, startId);
             return true;
     	}
-    	public static bool readType(bin.IReader r, out short v)
+    	public static bool readType(rpc.IReader r, out short v)
     	{
             v = 0;
             byte[] data; int startId;
@@ -86,7 +86,7 @@ namespace bin
             v = BitConverter.ToInt16(data, startId);
             return true;
     	}
-    	public static bool readType(bin.IReader r, out ushort v)
+    	public static bool readType(rpc.IReader r, out ushort v)
     	{
             v = 0;
             byte[] data; int startId;
@@ -95,7 +95,7 @@ namespace bin
             v = BitConverter.ToUInt16(data, startId);
             return true;
     	}
-    	public static bool readType(bin.IReader r, out sbyte v)
+    	public static bool readType(rpc.IReader r, out sbyte v)
     	{
             v = 0;
             byte[] data; int startId;
@@ -104,7 +104,7 @@ namespace bin
             v = (sbyte)data[startId];
             return true;
     	}
-    	public static bool readType(bin.IReader r, out byte v)
+    	public static bool readType(rpc.IReader r, out byte v)
     	{
             v = 0;
             byte[] data; int startId;
@@ -113,7 +113,7 @@ namespace bin
             v = data[startId];
             return true;
     	}
-    	public static bool readType(bin.IReader r, out bool v)
+    	public static bool readType(rpc.IReader r, out bool v)
     	{
             v = false;
             byte[] data; int startId;
@@ -122,7 +122,7 @@ namespace bin
             v = (data[startId] == 0)?false:true;
             return true;
     	}
-    	public static bool readType(bin.IReader r, out string v, uint maxlen)
+    	public static bool readType(rpc.IReader r, out string v, uint maxlen)
     	{
             v = "";
             uint len;
@@ -138,7 +138,7 @@ namespace bin
             v = Encoding.UTF8.GetString(data, startId, (int)len);
             return true;
     	}
-        public static bool readDynSize(bin.IReader r, out uint s)
+        public static bool readDynSize(rpc.IReader r, out uint s)
         {
             s = 0;
             byte b;

@@ -1,4 +1,4 @@
-﻿namespace bin 
+﻿namespace rpc 
 {
     /** Abstract interface for writing binary data. */
     public interface IWriter

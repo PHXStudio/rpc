@@ -1,8 +1,8 @@
 using System;
 
-namespace bin
+namespace rpc
 {
-    public class MemReader : bin.IReader
+    public class MemReader : rpc.IReader
     {
         private MemReader() {}
     	public MemReader(byte[] b, uint l)

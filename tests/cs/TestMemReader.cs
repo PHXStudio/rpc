@@ -1,4 +1,4 @@
-namespace bin
+namespace rpc
 {
 	/** IReader over a complete byte buffer (no Unity dependency). */
 	public sealed class TestMemReader : IReader
