@@ -30,6 +30,38 @@ public:
 		return wtptr_;
 	}
 
+	template <typename T>
+	bool writeVector(std::vector<T>& vIn)
+	{
+		if (0==space_)
+			return true;
+		if (0== vIn.size())
+			return true;
+		writeDynSize(vIn.size());
+		for (size_t i=0;i<vIn.size();i++)
+		{
+			if (wtptr_>space_)
+				return false;
+			vIn[i].serialize(this);
+		}
+		return true;
+	}
+
+	bool writeVector(std::vector<std::int32_t>& vIn)
+	{
+		if (0==space_)
+			return true;
+		if (0== vIn.size())
+			return true;
+		writeDynSize(static_cast<std::uint32_t>(vIn.size()));
+		vIn.resize(vIn.size());
+		for (size_t i=0;i<vIn.size();i++)
+		{
+			write(&vIn[i],sizeof(std::int32_t));
+		}
+		return true;
+	}
+
 private:
 	char*			buffer_;
 	size_t			space_;

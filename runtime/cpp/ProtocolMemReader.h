@@ -8,7 +8,7 @@
 class ProtocolMemReader : public ProtocolReader
 {
 public:
-	ProtocolMemReader(const void* b, size_t l):
+	ProtocolMemReader(const void * b, size_t l):
 	buffer_((char*)b),
 	length_(l),
 	rdptr_(0)
@@ -20,6 +20,35 @@ public:
 			return false;
 		::memcpy(data, buffer_ + rdptr_, len);
 		rdptr_ += len;
+		return true;
+	}
+
+	template <typename T>
+	bool readVector(std::vector<T>& vOut)
+	{
+		if (0==length_) return true;
+		std::uint32_t size=0;
+		readDynSize(size);
+		if (0==size) return true;
+		vOut.resize(size);
+		for(std::uint32_t i=0;i<size;i++)
+		{
+			vOut[i].deserialize(this);
+		}
+		return true;
+	}
+	
+	bool readVector(std::vector<std::int32_t>& vOut){
+		if (0==length_) return true;
+		std::uint32_t size=0;
+		readDynSize(size);
+		if (0==size) return true;
+		vOut.resize(size);
+		for(std::uint32_t i=0;i<size;i++)
+		{
+			if(!read(&vOut[i],sizeof(std::int32_t)))
+				return false;
+		}
 		return true;
 	}
 

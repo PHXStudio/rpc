@@ -227,6 +227,7 @@ static void generateStructDecl(CodeFile& f, Struct* s)
 	f.output("// deserialization.");
 	f.output("bool deserialize(ProtocolReader* r);");
 	f.output("void toJson(std::ostream& ss, bool needBracket = true)const;");
+	f.output("void serializeJson(std::ostream& ss)const { toJson(ss); }");
 	f.output("bool loadJson(const char* json, size_t len);");
 	f.output("bool loadJson(const std::string& json);");
 	f.output("bool loadJson(JsonReader& __rd__);");
