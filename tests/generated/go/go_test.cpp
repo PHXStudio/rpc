@@ -28,9 +28,20 @@ bool contains(const std::string& str, const std::string& substr) {
 	return str.find(substr) != std::string::npos;
 }
 
-// Get output directory for generated files
+// Get output directory for generated files, creating it on demand.
+//
+// ctest runs each TEST as a separate process, so every one of them has to be
+// able to stand on its own -- previously only FullTestGenerates ran mkdir and
+// the other eight relied on it having gone first, which held only as long as
+// ctest stayed serial.
 std::string getOutputDir() {
-	return std::string(RPC_TEST_OUTPUT_DIR) + "/go/";
+	const std::string dir = std::string(RPC_TEST_OUTPUT_DIR) + "/go/";
+	const std::string mkdirCmd = "mkdir -p " + dir;
+	// Result consumed rather than cast to void: GCC's -Wunused-result is not
+	// silenced by a (void) cast.
+	if (std::system(mkdirCmd.c_str()) != 0)
+		std::cerr << "could not create " << dir << std::endl;
+	return dir;
 }
 
 // Name of the generated file. The compiler derives it from the *schema* file's
@@ -59,8 +70,6 @@ std::string buildGenCmd(const char* schema, const char* output) {
 // Test that Go code can be generated for FullTest.rpc
 TEST(GoGenerationTest, FullTestGenerates) {
 	std::string outputDir = getOutputDir();
-	std::string mkdirCmd = "mkdir -p " + outputDir;
-	std::system(mkdirCmd.c_str());
 
 	std::string cmd = buildGenCmd("FullTest.rpc", "");
 	int result = std::system(cmd.c_str());

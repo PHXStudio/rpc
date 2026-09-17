@@ -4,6 +4,7 @@
 #ifndef RPC_TESTS_COMPILER_HARNESS_H
 #define RPC_TESTS_COMPILER_HARNESS_H
 
+#include <cstdio>
 #include <cstdlib>
 #include <fstream>
 #include <sstream>
@@ -44,7 +45,12 @@ inline void mkdirp(const std::string& dir) {
 #else
 		"mkdir -p \"" + dir + "\"";
 #endif
-	std::system(cmd.c_str());
+	// The directory usually already exists, so a failure here is not fatal --
+	// the compiler invocation that follows reports it more usefully. The
+	// result still has to be consumed, though: casting to void is not enough
+	// for GCC's -Wunused-result, only actually using the value is.
+	if (std::system(cmd.c_str()) != 0)
+		std::fprintf(stderr, "mkdirp: could not create '%s'\n", dir.c_str());
 }
 
 /** Run the rpc compiler and return its exit status. */
