@@ -33,6 +33,15 @@ std::string getOutputDir() {
 	return std::string(RPC_TEST_OUTPUT_DIR) + "/go/";
 }
 
+// Name of the generated file. The compiler derives it from the *schema* file's
+// stem, so FullTest.rpc yields FullTest.go -- capital F.
+//
+// This used to be spelled "fulltest.go", which worked on macOS (case
+// insensitive filesystem) and failed on Linux, where the file is simply not
+// found: readFile returns "" and every assertion below reports a missing
+// symbol. Keep the case exact.
+const char* kGeneratedFile = "FullTest.go";
+
 // Get schema file path
 std::string getSchemaFile(const char* name) {
 	return std::string(RPC_TEST_SCHEMA_DIR) + "/" + name;
@@ -58,7 +67,7 @@ TEST(GoGenerationTest, FullTestGenerates) {
 	EXPECT_EQ(result, 0) << "Go generation command failed: " << cmd;
 
 	// Check that output file was created
-	std::string outputFile = outputDir + "fulltest.go";
+	std::string outputFile = outputDir + kGeneratedFile;
 	std::string content = readFile(outputFile);
 
 	// Verify package declaration
@@ -107,7 +116,7 @@ TEST(GoGenerationTest, ContainsFieldMask) {
 	int result = std::system(cmd.c_str());
 	ASSERT_EQ(result, 0);
 
-	std::string outputFile = outputDir + "fulltest.go";
+	std::string outputFile = outputDir + kGeneratedFile;
 	std::string content = readFile(outputFile);
 
 	// Verify field mask usage
@@ -126,7 +135,7 @@ TEST(GoGenerationTest, ContainsServiceMethods) {
 	int result = std::system(cmd.c_str());
 	ASSERT_EQ(result, 0);
 
-	std::string outputFile = outputDir + "fulltest.go";
+	std::string outputFile = outputDir + kGeneratedFile;
 	std::string content = readFile(outputFile);
 
 	// Verify method implementations
@@ -151,7 +160,7 @@ TEST(GoGenerationTest, StructInheritance) {
 	int result = std::system(cmd.c_str());
 	ASSERT_EQ(result, 0);
 
-	std::string outputFile = outputDir + "fulltest.go";
+	std::string outputFile = outputDir + kGeneratedFile;
 	std::string content = readFile(outputFile);
 
 	// DerivedStruct should embed StructBase
@@ -170,7 +179,7 @@ TEST(GoGenerationTest, JsonTags) {
 	int result = std::system(cmd.c_str());
 	ASSERT_EQ(result, 0);
 
-	std::string outputFile = outputDir + "fulltest.go";
+	std::string outputFile = outputDir + kGeneratedFile;
 	std::string content = readFile(outputFile);
 
 	// Verify JSON struct tags
@@ -189,7 +198,7 @@ TEST(GoGenerationTest, EnumJsonMethods) {
 	int result = std::system(cmd.c_str());
 	ASSERT_EQ(result, 0);
 
-	std::string outputFile = outputDir + "fulltest.go";
+	std::string outputFile = outputDir + kGeneratedFile;
 	std::string content = readFile(outputFile);
 
 	// Verify enum JSON methods
@@ -208,7 +217,7 @@ TEST(GoGenerationTest, ArrayTypes) {
 	int result = std::system(cmd.c_str());
 	ASSERT_EQ(result, 0);
 
-	std::string outputFile = outputDir + "fulltest.go";
+	std::string outputFile = outputDir + kGeneratedFile;
 	std::string content = readFile(outputFile);
 
 	// Verify slice types for dynamic arrays
@@ -233,7 +242,7 @@ TEST(GoGenerationTest, ConstructorGeneration) {
 	int result = std::system(cmd.c_str());
 	ASSERT_EQ(result, 0);
 
-	std::string outputFile = outputDir + "fulltest.go";
+	std::string outputFile = outputDir + kGeneratedFile;
 	std::string content = readFile(outputFile);
 
 	// Verify New* constructors
@@ -258,7 +267,7 @@ TEST(GoGenerationTest, FieldIdConstants) {
 	int result = std::system(cmd.c_str());
 	ASSERT_EQ(result, 0);
 
-	std::string outputFile = outputDir + "fulltest.go";
+	std::string outputFile = outputDir + kGeneratedFile;
 	std::string content = readFile(outputFile);
 
 	// Verify field ID constants
