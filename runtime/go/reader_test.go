@@ -22,7 +22,7 @@ func TestMemReader_ReadInt8(t *testing.T) {
 
 // TestMemReader_ReadInt16 tests little-endian int16 reading
 func TestMemReader_ReadInt16(t *testing.T) {
-	data := []byte{0xFC, 0x18} // -1000 in little-endian
+	data := []byte{0x18, 0xFC} // -1000 as int16 0xFC18, little-endian
 	r := NewMemReader(data)
 
 	val, err := r.ReadInt16()
@@ -131,12 +131,13 @@ func TestMemReader_ReadDynSize(t *testing.T) {
 		data     []byte
 		expected uint32
 	}{
+		// First byte's high 2 bits give the number of following bytes.
 		{[]byte{0x3F}, 0x3F},
-		{[]byte{0x40, 0x00}, 0x40},
-		{[]byte{0xFF, 0x3F}, 0x3FFF},
-		{[]byte{0x40, 0x40, 0x00}, 0x4000},
-		{[]byte{0xFF, 0xFF, 0x3F}, 0x3FFFFF},
-		{[]byte{0x40, 0x40, 0x40, 0x00}, 0x400000},
+		{[]byte{0x40, 0x40}, 0x40},
+		{[]byte{0x7F, 0xFF}, 0x3FFF},
+		{[]byte{0x80, 0x40, 0x00}, 0x4000},
+		{[]byte{0xBF, 0xFF, 0xFF}, 0x3FFFFF},
+		{[]byte{0xC0, 0x40, 0x00, 0x00}, 0x400000},
 	}
 
 	for _, tt := range tests {

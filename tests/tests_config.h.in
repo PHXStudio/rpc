@@ -5,6 +5,8 @@
 #define RPC_TEST_VERIFIER_DLL "@RPC_TEST_VERIFIER_DLL_ABS@"
 /** Built FullCrossLangVerifier assembly. */
 #define RPC_TEST_FULL_VERIFIER_DLL "@RPC_TEST_FULL_VERIFIER_DLL_ABS@"
+/** Built InteropVerifier assembly (InteropFull golden vector, checked in C#). */
+#define RPC_TEST_INTEROP_VERIFIER_DLL "@RPC_TEST_INTEROP_VERIFIER_DLL_ABS@"
 /** Absolute path to rpc compiler executable. */
 #define RPC_TEST_COMPILER_EXE "@RPC_TEST_COMPILER_EXE@"
 /** Schema directory for test .rpc files. */

@@ -1,5 +1,14 @@
 # C# 和 C++ 序列化兼容性验证报告
 
+> **历史文档，其描述的资产已全部删除（保留作记录，不再更新）**
+>
+> 本文引用的 `tests/cpp_serialization_check.cpp`、`tests/csharp_serialization_check.cs`
+> 与 `tests/csharp_test_data.bin` 均已移除：它们是未接入任何构建的废弃验证程序，
+> 从未被 ctest 或 CI 执行过。其中唯一有价值的覆盖（`skip` 越界必须失败）
+> 已迁移到 `tests/runtime/runtime_edge_test.cpp`。
+>
+> 当前的 C++ ↔ C# 互通由 `rpc_serialization_tests` 与 `rpc_full_crosslang_tests` 守护。
+
 ## 测试日期
 2026-04-12
 

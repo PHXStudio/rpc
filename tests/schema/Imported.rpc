@@ -1,0 +1,15 @@
+/* Imported by ImportRoot.rpc. Exercises the #import mechanism: definitions
+   from this file are flattened into the importing file's single output, which
+   is named after the *importing* file's stem (ImportRoot), not this one. */
+
+enum ImportedEnum
+{
+	IE1,
+	IE2,
+};
+
+struct ImportedStruct
+{
+	int32 value_;
+	string name_;
+};

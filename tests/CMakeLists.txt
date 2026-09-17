@@ -76,6 +76,38 @@ add_custom_command(
   VERBATIM
 )
 
+# ---------- InteropFull schema (cross-language width coverage) ----------
+# CrossLangTest/FullCrossLang never exercise int8/16/64, float/double, a nested
+# struct or an array of strings, so this schema is what pins those widths across
+# backends. All four generators are run from the same schema.
+set(_interop_schema "${CMAKE_CURRENT_SOURCE_DIR}/schema/InteropFull.rpc")
+set(_interop_gen_cpp "${CMAKE_CURRENT_BINARY_DIR}/generated/interop_cpp")
+set(_interop_gen_py "${CMAKE_CURRENT_BINARY_DIR}/generated/interop_py")
+set(_interop_gen_go "${CMAKE_CURRENT_BINARY_DIR}/generated/interop_go")
+set(_interop_gen_cs "${CMAKE_CURRENT_BINARY_DIR}/generated/interop_cs")
+set(_interop_gen_cpp_slash "${_interop_gen_cpp}/")
+set(_interop_gen_py_slash "${_interop_gen_py}/")
+set(_interop_gen_go_slash "${_interop_gen_go}/")
+set(_interop_gen_cs_slash "${_interop_gen_cs}/")
+
+add_custom_command(
+  OUTPUT
+    "${_interop_gen_cpp}/InteropFull.h"
+    "${_interop_gen_cpp}/InteropFull.cpp"
+    "${_interop_gen_py}/InteropFull.py"
+    "${_interop_gen_go}/InteropFull.go"
+    "${_interop_gen_cs}/InteropFull.cs"
+  COMMAND ${CMAKE_COMMAND} -E make_directory
+          "${_interop_gen_cpp}" "${_interop_gen_py}" "${_interop_gen_go}" "${_interop_gen_cs}"
+  COMMAND "$<TARGET_FILE:rpc>" -i "${_interop_schema}" -o "${_interop_gen_cpp_slash}" -g cpp
+  COMMAND "$<TARGET_FILE:rpc>" -i "${_interop_schema}" -o "${_interop_gen_py_slash}" -g py
+  COMMAND "$<TARGET_FILE:rpc>" -i "${_interop_schema}" -o "${_interop_gen_go_slash}" -g go
+  COMMAND "$<TARGET_FILE:rpc>" -i "${_interop_schema}" -o "${_interop_gen_cs_slash}" -g cs
+  DEPENDS rpc "${_interop_schema}"
+  COMMENT "Generating InteropFull (cpp/py/go/cs) from RPC schema"
+  VERBATIM
+)
+
 # ---------- GoogleTest ----------
 find_package(GTest QUIET)
 if(NOT GTest_FOUND)
@@ -202,6 +234,39 @@ if(RPC_TEST_DOTNET)
   add_custom_target(rpc_full_crosslang_verifier_build DEPENDS "${_rpc_full_verifier_stamp}")
 endif()
 
+# ---------- InteropVerifier (.NET) ----------
+# Checks the InteropFull golden vector from C#, so all four backends are held
+# to the same bytes. Building it also compiles the generated InteropFull.cs,
+# which is how a never-compiled FullTest.cs let a CS0108 warning survive.
+set(RPC_TEST_INTEROP_VERIFIER_DLL_ABS "")
+
+if(RPC_TEST_DOTNET)
+  set(_rpc_interop_verifier_dll "${CMAKE_CURRENT_SOURCE_DIR}/cs/bin/${RPC_TEST_VERIFIER_CONFIGURATION}/net6.0/InteropVerifier.dll")
+  get_filename_component(RPC_TEST_INTEROP_VERIFIER_DLL_ABS "${_rpc_interop_verifier_dll}" ABSOLUTE)
+endif()
+
+if(RPC_TEST_DOTNET)
+  set(_rpc_interop_verifier_stamp "${CMAKE_CURRENT_BINARY_DIR}/interop_verifier_dotnet.stamp")
+  file(GLOB _rpc_interop_verifier_cs CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/cs/InteropVerifier.cs"
+  )
+  add_custom_command(
+    OUTPUT "${_rpc_interop_verifier_stamp}"
+    COMMAND ${RPC_TEST_DOTNET} build "${CMAKE_CURRENT_SOURCE_DIR}/cs/InteropVerifier.csproj"
+            --configuration "${RPC_TEST_VERIFIER_CONFIGURATION}"
+            --verbosity minimal
+            "-p:GeneratedCsDir=${_interop_gen_cs}"
+    COMMAND ${CMAKE_COMMAND} -E touch "${_rpc_interop_verifier_stamp}"
+    DEPENDS
+      "${_interop_gen_cs}/InteropFull.cs"
+      "${CMAKE_CURRENT_SOURCE_DIR}/cs/InteropVerifier.csproj"
+      ${_rpc_interop_verifier_cs}
+    COMMENT "Building InteropVerifier (.NET) for integration tests"
+    VERBATIM
+  )
+  add_custom_target(rpc_interop_verifier_build DEPENDS "${_rpc_interop_verifier_stamp}")
+endif()
+
 # ---------- Config header ----------
 set(RPC_TEST_SCHEMA_DIR "${CMAKE_CURRENT_SOURCE_DIR}/schema")
 set(RPC_TEST_OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/compiler_output")
@@ -290,6 +355,61 @@ target_include_directories(rpc_compiler_tests PRIVATE
 target_compile_features(rpc_compiler_tests PRIVATE cxx_std_11)
 target_link_libraries(rpc_compiler_tests PRIVATE GTest::gtest_main GTest::gtest)
 
+# 4b. Negative compiler tests: malformed schemas must be rejected.
+add_executable(rpc_compiler_negative_tests
+  runtime/compiler_negative_test.cpp
+)
+add_dependencies(rpc_compiler_negative_tests rpc)
+target_include_directories(rpc_compiler_negative_tests PRIVATE
+  "${CMAKE_CURRENT_BINARY_DIR}"
+)
+target_compile_features(rpc_compiler_negative_tests PRIVATE cxx_std_11)
+target_link_libraries(rpc_compiler_negative_tests PRIVATE GTest::gtest_main GTest::gtest)
+
+# 4c. #import tests: imported definitions are flattened into the root's output.
+add_executable(rpc_import_tests
+  runtime/import_test.cpp
+)
+add_dependencies(rpc_import_tests rpc)
+target_include_directories(rpc_import_tests PRIVATE
+  "${CMAKE_CURRENT_BINARY_DIR}"
+)
+target_compile_features(rpc_import_tests PRIVATE cxx_std_11)
+target_link_libraries(rpc_import_tests PRIVATE GTest::gtest_main GTest::gtest)
+
+# 4d. Runtime boundary tests: Skip limits and the version-compat read path.
+add_executable(rpc_runtime_edge_tests
+  runtime/runtime_edge_test.cpp
+)
+target_include_directories(rpc_runtime_edge_tests PRIVATE
+  "${CMAKE_SOURCE_DIR}/runtime/cpp"
+)
+target_compile_features(rpc_runtime_edge_tests PRIVATE cxx_std_11)
+target_link_libraries(rpc_runtime_edge_tests PRIVATE GTest::gtest_main GTest::gtest)
+
+# 4e. InteropFull cross-language test: the same golden vector, checked in C#.
+add_executable(rpc_interop_crosslang_tests
+  runtime/interop_crosslang_test.cpp
+  "${_interop_gen_cpp}/InteropFull.cpp"
+)
+add_dependencies(rpc_interop_crosslang_tests rpc)
+if(RPC_TEST_DOTNET)
+  add_dependencies(rpc_interop_crosslang_tests rpc_interop_verifier_build)
+endif()
+target_include_directories(rpc_interop_crosslang_tests PRIVATE
+  "${CMAKE_SOURCE_DIR}/runtime/cpp"
+  "${_interop_gen_cpp}"
+  "${CMAKE_CURRENT_BINARY_DIR}"
+  "${rapidjson_SOURCE_DIR}/include"
+)
+target_compile_features(rpc_interop_crosslang_tests PRIVATE cxx_std_11)
+if(RPC_TEST_DOTNET)
+  target_compile_definitions(rpc_interop_crosslang_tests PRIVATE RPC_HAVE_DOTNET=1)
+else()
+  target_compile_definitions(rpc_interop_crosslang_tests PRIVATE RPC_HAVE_DOTNET=0)
+endif()
+target_link_libraries(rpc_interop_crosslang_tests PRIVATE GTest::gtest_main GTest::gtest)
+
 # 5. Service tests
 add_executable(rpc_service_tests
   runtime/service_test.cpp
@@ -319,18 +439,9 @@ target_compile_features(rpc_json_tests PRIVATE cxx_std_11)
 target_link_libraries(rpc_json_tests PRIVATE GTest::gtest_main GTest::gtest)
 
 # 7. Go code generation tests
-set(_full_gen_go "${CMAKE_CURRENT_BINARY_DIR}/generated/go")
-set(_full_gen_go_slash "${_full_gen_go}/")
-
-add_custom_command(
-  OUTPUT "${_full_gen_go}/fulltest.go"
-  COMMAND ${CMAKE_COMMAND} -E make_directory "${_full_gen_go}"
-  COMMAND "$<TARGET_FILE:rpc>" -i "${_full_schema}" -o "${_full_gen_go_slash}" -g go
-  DEPENDS rpc "${_full_schema}"
-  COMMENT "Generating FullTest (go) from RPC schema"
-  VERBATIM
-)
-
+# Note: there is no add_custom_command here. go_test.cpp is a checked-in source
+# file that re-runs the compiler itself into RPC_TEST_OUTPUT_DIR/go/, so a
+# build-time generation step would produce an output nothing consumes.
 add_executable(rpc_go_generator_tests
   generated/go/go_test.cpp
 )
@@ -350,6 +461,7 @@ add_executable(rpc_wire_format_tests
   "${_gen_cpp}/CrossLangTest.cpp"
   "${_fullcl_gen_cpp}/FullCrossLang.cpp"
   "${_nested_gen_cpp}/Nested.cpp"
+  "${_interop_gen_cpp}/InteropFull.cpp"
 )
 add_dependencies(rpc_wire_format_tests rpc)
 target_include_directories(rpc_wire_format_tests PRIVATE
@@ -357,10 +469,50 @@ target_include_directories(rpc_wire_format_tests PRIVATE
   "${_gen_cpp}"
   "${_fullcl_gen_cpp}"
   "${_nested_gen_cpp}"
+  "${_interop_gen_cpp}"
   "${rapidjson_SOURCE_DIR}/include"
 )
 target_compile_features(rpc_wire_format_tests PRIVATE cxx_std_11)
 target_link_libraries(rpc_wire_format_tests PRIVATE GTest::gtest_main GTest::gtest)
+
+# ---------- Go cross-language test ----------
+# Unlike rpc_go_generator_tests (which greps the generated source), this one
+# actually compiles and runs the generated Go code against the same golden
+# vector the C++ and Python tests use. Skipped when no Go toolchain is found,
+# mirroring how the .NET tests behave.
+find_program(RPC_TEST_GO go)
+if(RPC_TEST_GO)
+  set(RPC_RUNTIME_GO_DIR "${CMAKE_SOURCE_DIR}/runtime/go")
+  set(_interop_go_mod "${CMAKE_CURRENT_BINARY_DIR}/interop_go_module")
+  file(MAKE_DIRECTORY "${_interop_go_mod}")
+
+  configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/go/go.mod.in"
+    "${_interop_go_mod}/go.mod"
+    @ONLY
+  )
+  configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/go/interop_golden_test.go"
+    "${_interop_go_mod}/interop_golden_test.go"
+    COPYONLY
+  )
+  add_custom_command(
+    OUTPUT "${_interop_go_mod}/InteropFull.go"
+    COMMAND ${CMAKE_COMMAND} -E copy
+            "${_interop_gen_go}/InteropFull.go" "${_interop_go_mod}/InteropFull.go"
+    DEPENDS "${_interop_gen_go}/InteropFull.go"
+    COMMENT "Staging generated Go code into a testable module"
+    VERBATIM
+  )
+  add_custom_target(rpc_interop_go_module ALL DEPENDS "${_interop_go_mod}/InteropFull.go")
+
+  add_test(
+    NAME GoInteropGolden
+    COMMAND "${RPC_TEST_GO}" test ./...
+    WORKING_DIRECTORY "${_interop_go_mod}"
+  )
+  set_tests_properties(GoInteropGolden PROPERTIES LABELS "rpc")
+endif()
 
 # ---------- Python conformance test ----------
 # The C++ golden vectors pin the wire format but cannot catch a Python-only
@@ -378,6 +530,16 @@ if(Python3_Interpreter_FOUND)
   # The generated Python comes from the same custom command that produces the
   # C++ sources, so it exists as soon as rpc_wire_format_tests has been built.
   set_tests_properties(PythonWireFormatGolden PROPERTIES LABELS "rpc")
+
+  # Same idea, against the InteropFull vector shared with the C++ and Go tests.
+  add_test(
+    NAME PythonInteropGolden
+    COMMAND "${Python3_EXECUTABLE}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/py/interop_test.py"
+            "${_interop_gen_py}"
+            "${CMAKE_SOURCE_DIR}/runtime/py"
+  )
+  set_tests_properties(PythonInteropGolden PROPERTIES LABELS "rpc")
 endif()
 
 # ---------- Discover tests ----------
@@ -387,6 +549,10 @@ gtest_discover_tests(rpc_wire_format_tests PROPERTIES LABELS "rpc")
 gtest_discover_tests(rpc_full_schema_tests PROPERTIES LABELS "rpc")
 gtest_discover_tests(rpc_full_crosslang_tests PROPERTIES LABELS "rpc")
 gtest_discover_tests(rpc_compiler_tests PROPERTIES LABELS "rpc")
+gtest_discover_tests(rpc_compiler_negative_tests PROPERTIES LABELS "rpc")
+gtest_discover_tests(rpc_import_tests PROPERTIES LABELS "rpc")
+gtest_discover_tests(rpc_runtime_edge_tests PROPERTIES LABELS "rpc")
+gtest_discover_tests(rpc_interop_crosslang_tests PROPERTIES LABELS "rpc")
 gtest_discover_tests(rpc_service_tests PROPERTIES LABELS "rpc")
 gtest_discover_tests(rpc_json_tests PROPERTIES LABELS "rpc")
 gtest_discover_tests(rpc_go_generator_tests PROPERTIES LABELS "rpc")

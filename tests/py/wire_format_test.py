@@ -26,11 +26,15 @@ def load(gen_dir, runtime_dir):
 
 
 def to_hex(buf):
-    """serialize() appends a mix of bytes and str (the runtime is Py2-flavoured),
-    so normalise before joining -- the same dance a caller has to do."""
-    return b"".join(
-        x if isinstance(x, bytes) else x.encode("latin-1") for x in buf
-    ).hex(" ")
+    """Join the buffer produced by serialize().
+
+    No normalisation on purpose. serialize() must append bytes only, so a str
+    leaking back in (the string and bool writers used to do exactly that) makes
+    b"".join raise TypeError instead of being quietly encoded away. This
+    function previously encoded stray str values before joining, which is what
+    kept that defect invisible while every test stayed green.
+    """
+    return b"".join(buf).hex(" ")
 
 
 def serialize(value):

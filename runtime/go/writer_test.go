@@ -36,8 +36,8 @@ func TestMemWriter_WriteInt16(t *testing.T) {
 	if len(data) != 2 {
 		t.Fatalf("expected 2 bytes, got %d", len(data))
 	}
-	// -1000 in little-endian is 0x18FC
-	expected := []byte{0xFC, 0x18}
+	// -1000 as int16 is 0xFC18; little-endian puts the low byte first.
+	expected := []byte{0x18, 0xFC}
 	if !bytes.Equal(data, expected) {
 		t.Errorf("expected %v, got %v", expected, data)
 	}
@@ -138,12 +138,14 @@ func TestMemWriter_WriteDynSize(t *testing.T) {
 		value    uint32
 		expected []byte
 	}{
-		{0x3F, []byte{0x3F}},           // 1 byte
-		{0x40, []byte{0x40, 0x00}},     // 2 bytes
-		{0x3FFF, []byte{0xFF, 0x3F}},   // 2 bytes
-		{0x4000, []byte{0x40, 0x40, 0x00}}, // 3 bytes
-		{0x3FFFFF, []byte{0xFF, 0xFF, 0x3F}}, // 3 bytes
-		{0x400000, []byte{0x40, 0x40, 0x40, 0x00}}, // 4 bytes
+		// The high 2 bits of the first byte record how many bytes follow,
+		// so the value is NOT a plain big-endian rendering.
+		{0x3F, []byte{0x3F}},                       // 1 byte:  0nnnnnnn
+		{0x40, []byte{0x40, 0x40}},                 // 2 bytes: 01nnnnnn nnnnnnnn
+		{0x3FFF, []byte{0x7F, 0xFF}},               // 2 bytes
+		{0x4000, []byte{0x80, 0x40, 0x00}},         // 3 bytes: 10nnnnnn ...
+		{0x3FFFFF, []byte{0xBF, 0xFF, 0xFF}},       // 3 bytes
+		{0x400000, []byte{0xC0, 0x40, 0x00, 0x00}}, // 4 bytes: 11nnnnnn ...
 	}
 
 	for _, tt := range tests {

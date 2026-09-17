@@ -1,0 +1,15 @@
+#import Imported.rpc
+
+/* Root file for the #import tests.
+
+   The import name carries no quotes and no path: the lexer first tries the
+   name as-is (relative to the working directory), then falls back to the
+   directory holding this schema. Referencing ImportedStruct below proves the
+   imported definition actually reached the parser. */
+
+struct RootStruct
+{
+	ImportedStruct imported_;
+	ImportedEnum kind_;
+	int32 extra_;
+};

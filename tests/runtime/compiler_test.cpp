@@ -1,103 +1,27 @@
+/* Compiler smoke tests: the compiler exits cleanly and its output contains the
+   expected declarations.
+
+   These are TEXT assertions only -- the generated code is neither compiled nor
+   run here. The error paths live in compiler_negative_test.cpp and the
+   #import behaviour in import_test.cpp.
+
+   Two tests used to live here (ImportRpcCpp, ExampleRpcCpp) pointing at
+   bin/Import.rpc and bin/Example.rpc. That directory was removed when the
+   namespace unification renamed things, so both failed unconditionally and
+   were the only thing standing in for #import coverage. They are replaced by
+   import_test.cpp, which uses schemas that still exist. */
+
 #include <gtest/gtest.h>
 
-#include <cstdio>
-#include <cstdlib>
-#include <fstream>
-#include <sstream>
-#include <string>
+#include "compiler_harness.h"
 
-#include "tests_config.h"
-
-#ifdef _WIN32
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
-#include <process.h>
-#else
-#include <sys/wait.h>
-#include <unistd.h>
-#endif
-
-namespace {
-
-static int shellExitStatus(int status) {
-#ifdef _WIN32
-	return status;
-#else
-	if (WIFEXITED(status))
-		return WEXITSTATUS(status);
-	return -1;
-#endif
-}
-
-static std::string makeOutDir(const char* subdir) {
-	return std::string(RPC_TEST_OUTPUT_DIR) + "/" + subdir;
-}
-
-static void mkdirp(const std::string& dir) {
-	std::string cmd =
-#ifdef _WIN32
-		"mkdir \"" + dir + "\" 2>NUL";
-#else
-		"mkdir -p \"" + dir + "\"";
-#endif
-	std::system(cmd.c_str());
-}
-
-/** Run rpc compiler and return exit status. */
-static int runCompiler(const std::string& inputFile, const std::string& outputDir,
-                       const std::string& generator) {
-	std::ostringstream cmd;
-	cmd << "\"" << RPC_TEST_COMPILER_EXE << "\"";
-	cmd << " -i \"" << inputFile << "\"";
-	cmd << " -o \"" << outputDir << "/\"";
-	cmd << " -g " << generator;
-
-	return shellExitStatus(std::system(cmd.str().c_str()));
-}
-
-static bool fileContains(const std::string& path, const std::string& needle) {
-	std::ifstream f(path);
-	if (!f) return false;
-	std::string content((std::istreambuf_iterator<char>(f)),
-	                     std::istreambuf_iterator<char>());
-	return content.find(needle) != std::string::npos;
-}
-
-} // namespace
-
-// ============================================================
-// Import.rpc + Example.rpc: compile with C++ generator
-// ============================================================
-
-TEST(Compiler, ImportRpcCpp) {
-	const std::string outDir = makeOutDir("import_cpp");
-	mkdirp(outDir);
-
-	EXPECT_EQ(runCompiler(std::string(RPC_TEST_SCHEMA_DIR) + "/../../bin/Import.rpc", outDir, "cpp"), 0);
-	EXPECT_TRUE(fileContains(outDir + "/Import.h", "struct StructType"));
-	EXPECT_TRUE(fileContains(outDir + "/Import.h", "struct StructBase"));
-	EXPECT_TRUE(fileContains(outDir + "/Import.h", "enum EnumName"));
-	EXPECT_TRUE(fileContains(outDir + "/Import.h", "ServiceBaseStub"));
-	EXPECT_TRUE(fileContains(outDir + "/Import.h", "ServiceBaseProxy"));
-}
-
-TEST(Compiler, ExampleRpcCpp) {
-	const std::string outDir = makeOutDir("example_cpp");
-	mkdirp(outDir);
-
-	EXPECT_EQ(runCompiler(std::string(RPC_TEST_SCHEMA_DIR) + "/../../bin/Example.rpc", outDir, "cpp"), 0);
-	EXPECT_TRUE(fileContains(outDir + "/Example.h", "struct DerivedStruct"));
-	EXPECT_TRUE(fileContains(outDir + "/Example.h", "DerivedServiceStub"));
-	EXPECT_TRUE(fileContains(outDir + "/Example.h", "DerivedServiceProxy"));
-	EXPECT_TRUE(fileContains(outDir + "/Example.h", "method3"));
-	EXPECT_TRUE(fileContains(outDir + "/Example.h", "method4"));
-}
+using namespace rpc_test;
 
 TEST(Compiler, FullTestRpcCpp) {
 	const std::string outDir = makeOutDir("fulltest_cpp");
 	mkdirp(outDir);
 
-	EXPECT_EQ(runCompiler(std::string(RPC_TEST_SCHEMA_DIR) + "/FullTest.rpc", outDir, "cpp"), 0);
+	EXPECT_EQ(runCompiler(schemaPath("FullTest.rpc"), outDir, "cpp"), 0);
 	EXPECT_TRUE(fileContains(outDir + "/FullTest.h", "struct StructType"));
 	EXPECT_TRUE(fileContains(outDir + "/FullTest.h", "struct StructBase"));
 	EXPECT_TRUE(fileContains(outDir + "/FullTest.h", "struct DerivedStruct"));
@@ -112,7 +36,7 @@ TEST(Compiler, FullTestRpcCs) {
 	const std::string outDir = makeOutDir("fulltest_cs");
 	mkdirp(outDir);
 
-	EXPECT_EQ(runCompiler(std::string(RPC_TEST_SCHEMA_DIR) + "/FullTest.rpc", outDir, "cs"), 0);
+	EXPECT_EQ(runCompiler(schemaPath("FullTest.rpc"), outDir, "cs"), 0);
 	EXPECT_TRUE(fileContains(outDir + "/FullTest.cs", "class StructType"));
 	EXPECT_TRUE(fileContains(outDir + "/FullTest.cs", "class StructBase"));
 	EXPECT_TRUE(fileContains(outDir + "/FullTest.cs", "class DerivedStruct"));
@@ -122,7 +46,29 @@ TEST(Compiler, FullTestRpcPy) {
 	const std::string outDir = makeOutDir("fulltest_py");
 	mkdirp(outDir);
 
-	EXPECT_EQ(runCompiler(std::string(RPC_TEST_SCHEMA_DIR) + "/FullTest.rpc", outDir, "py"), 0);
+	EXPECT_EQ(runCompiler(schemaPath("FullTest.rpc"), outDir, "py"), 0);
 	EXPECT_TRUE(fileContains(outDir + "/FullTest.py", "StructType"));
 	EXPECT_TRUE(fileContains(outDir + "/FullTest.py", "StructBase"));
+}
+
+TEST(Compiler, FullTestRpcGo) {
+	const std::string outDir = makeOutDir("fulltest_go");
+	mkdirp(outDir);
+
+	EXPECT_EQ(runCompiler(schemaPath("FullTest.rpc"), outDir, "go"), 0);
+	EXPECT_TRUE(fileContains(outDir + "/FullTest.go", "type StructType struct"));
+	EXPECT_TRUE(fileContains(outDir + "/FullTest.go", "type StructBase struct"));
+	EXPECT_TRUE(fileContains(outDir + "/FullTest.go", "type DerivedStruct struct"));
+}
+
+/* An unrecognised -g value silently falls back to cpp rather than failing.
+   Pinning the observed behaviour so the trap documented in CLAUDE.md cannot
+   change without someone noticing. */
+TEST(Compiler, UnknownGeneratorFallsBackToCpp) {
+	const std::string outDir = makeOutDir("unknown_generator");
+	mkdirp(outDir);
+
+	EXPECT_EQ(runCompiler(schemaPath("FullTest.rpc"), outDir, "not-a-generator"), 0);
+	EXPECT_TRUE(fileExists(outDir + "/FullTest.h"))
+		<< "unknown -g silently produced C++ output";
 }

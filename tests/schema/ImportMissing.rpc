@@ -1,0 +1,12 @@
+/* Used by ImportTest.MissingFileIsFatal only.
+
+   The import target does not exist, so the lexer prints a diagnostic to stderr
+   and calls exit(1) rather than raising. Never compile this file on its own --
+   it is expected to fail. */
+
+#import ThisFileDoesNotExist.rpc
+
+struct NeverReached
+{
+	int32 x_;
+};

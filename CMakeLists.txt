@@ -40,8 +40,12 @@ add_subdirectory(compiler)
 # runtime.
 #add_subdirectory(runtime)
 
+# include(CTest) is what *defines* BUILD_TESTING, so it has to come first.
+# Testing the flag before including the module meant tests/ was never
+# configured unless -DBUILD_TESTING=ON was passed explicitly, and a stale
+# build tree would silently report "Total Tests: 0".
+include(CTest)
 if(BUILD_TESTING)
-  include(CTest)
   enable_testing()
   add_subdirectory(tests)
 endif()

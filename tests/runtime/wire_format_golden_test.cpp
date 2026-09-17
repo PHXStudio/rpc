@@ -20,6 +20,7 @@
 
 #include "CrossLangTest.h"
 #include "FullCrossLang.h"
+#include "InteropFull.h"
 #include "Nested.h"
 
 namespace {
@@ -272,4 +273,87 @@ TEST(WireFormatGolden, NestedStructAsArrayElement) {
 
 	Holder empty;
 	expectGolden(empty, "01 00");
+}
+
+/* ---------- InteropFull: the widths the older schemas miss ---------- */
+
+/* One message carrying every scalar width, an enum, a string, bytes, a nested
+   struct, an empty struct and two arrays.
+
+   CrossLangTest and FullCrossLang between them never exercise int8/16/64,
+   float/double, a nested struct or an array of strings, so a backend that
+   widened an integer or dropped a float would still pass every cross-language
+   test. This vector pins those widths.
+
+   The identical bytes are asserted by tests/py/interop_test.py and the Go test
+   under tests/go/, which is what makes this a shared contract rather than a
+   C++-only expectation. */
+TEST(WireFormatGolden, InteropPayloadAllFieldsPresent) {
+	InteropPayload p;
+	p.i8_ = -1;
+	p.u8_ = 2;
+	p.i16_ = -3;
+	p.u16_ = 4;
+	p.i32_ = -5;
+	p.u32_ = 6;
+	p.i64_ = -7;
+	p.u64_ = 8;
+	p.f32_ = 1.5f;
+	p.f64_ = 2.5;
+	p.b_ = true;
+	p.kind_ = (InteropEnum)1;
+	p.text_ = "hi";
+	p.blob_.push_back(0xAA);
+	p.blob_.push_back(0xBB);
+	p.inner_.x_ = 9;
+	p.inner_.flag_ = true;
+	p.ints_.push_back(1);
+	p.ints_.push_back(2);
+	p.words_.push_back("a");
+	p.words_.push_back("bc");
+
+	expectGolden(p,
+		"03 ff ff c0"                 // fmLen=3; 18 fields, all with a non-default value
+		" ff"                         // i8_  = -1
+		" 02"                         // u8_  = 2
+		" fd ff"                      // i16_ = -3
+		" 04 00"                      // u16_ = 4
+		" fb ff ff ff"                // i32_ = -5
+		" 06 00 00 00"                // u32_ = 6
+		" f9 ff ff ff ff ff ff ff"    // i64_ = -7
+		" 08 00 00 00 00 00 00 00"    // u64_ = 8
+		" 00 00 c0 3f"                // f32_ = 1.5
+		" 00 00 00 00 00 00 04 40"    // f64_ = 2.5
+		// b_ = true has no payload byte: the mask bit carries the value
+		" 01"                         // kind_ = IR1
+		" 02 68 69"                   // text_ = "hi"
+		" 02 aa bb"                   // blob_ = {0xAA, 0xBB}
+		" 01 c0 09 00 00 00"          // inner_: own fmLen/mask, x_=9, flag_ is a mask bit
+		// empty_: zero fields, so zero bytes -- not even a mask segment
+		" 02 01 00 00 00 02 00 00 00" // ints_ = {1, 2}
+		" 02 01 61 02 62 63");        // words_ = {"a", "bc"}
+
+	expectRoundtrip(p,
+		"03 ff ff c0 ff 02 fd ff 04 00 fb ff ff ff 06 00 00 00"
+		" f9 ff ff ff ff ff ff ff 08 00 00 00 00 00 00 00"
+		" 00 00 c0 3f 00 00 00 00 00 00 04 40 01 02 68 69 02 aa bb"
+		" 01 c0 09 00 00 00 02 01 00 00 00 02 00 00 00 02 01 61 02 62 63");
+}
+
+/* A struct with no fields contributes nothing at all. Python's generator used
+   to emit a one-byte mask segment here, which made it the only backend whose
+   bytes disagreed. */
+TEST(WireFormatGolden, InteropEmptyWritesNothing) {
+	InteropEmpty e;
+	expectGolden(e, "");
+
+	/* A nested empty struct still sets its parent's mask bit -- being present
+	   is what the bit means -- but adds no bytes of its own. */
+	InteropPayload p;
+	p.i32_ = 1;
+	expectGolden(p,
+		"03 08 03 00"        // fmLen=3; mask bits: i32_ (bit 4), inner_ and empty_ (bits 14,15)
+		" 01 00 00 00"       // i32_ = 1
+		" 01 00"             // inner_: own mask byte, all fields default
+		);                   // empty_: nothing at all
 }

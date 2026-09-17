@@ -1,0 +1,55 @@
+/* Cross-language interop schema.
+
+   CrossLangTest.rpc has three fields (int32/string/bytes) and FullCrossLang.rpc
+   has seven (int32/uint32/bool/enum/string/bytes/array<int32>). Between them
+   they never exercise int8/uint8/int16/uint16/int64/uint64/float/double, a
+   nested struct, or an array of strings -- so a backend that widened an
+   integer, dropped a float, or mis-set a nested struct's mask bit would still
+   pass every cross-language test. This schema covers those gaps. */
+
+enum InteropEnum
+{
+	IR0,
+	IR1,
+	IR2,
+};
+
+/* Nested struct: occupies exactly one bit of its parent's mask. */
+struct InteropInner
+{
+	int32 x_;
+	bool flag_;
+};
+
+/* Zero fields. Contributes no mask segment and no data: zero bytes on the
+   wire. Every backend must agree on that, including Python, whose generator
+   used to emit a one-byte mask for it. */
+struct InteropEmpty
+{
+};
+
+struct InteropPayload
+{
+	/* every scalar width */
+	int8 i8_;
+	uint8 u8_;
+	int16 i16_;
+	uint16 u16_;
+	int32 i32_;
+	uint32 u32_;
+	int64 i64_;
+	uint64 u64_;
+	float f32_;
+	double f64_;
+	bool b_;
+	/* enum, string, bytes */
+	InteropEnum kind_;
+	string text_;
+	bytes blob_;
+	/* nested and empty structs */
+	InteropInner inner_;
+	InteropEmpty empty_;
+	/* arrays */
+	array<int32> ints_;
+	array<string> words_;
+};
