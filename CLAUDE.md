@@ -85,15 +85,15 @@ python3 -c "import ast; ast.parse(open('X.py').read())"   # Python 语法
 
 ### 规则五：跨语言兼容性是默认要求
 
-新写或修改的 schema，默认应能在四种语言间互通。基本类型（标量、字符串、数组、bool、枚举）
-已验证四方输出逐字节一致，由 `rpc_wire_format_tests` 守护。
+新写或修改的 schema，默认应能在四种语言间互通。标量、字符串、数组、bool、枚举
+以及服务方法载荷，均已验证四方输出逐字节一致，由 `rpc_wire_format_tests`
+与 `service_test.cpp` 的 `MethodPayloadGolden.*` 守护。
 
-已知**仍会破坏互通**的两处：
+已知**仍会破坏互通**的一处：
 
 - **结构体中嵌套 struct 后由 Python 收发** —— Python 生成的嵌套 writer 不设置自己的掩码位，后续字段掩码整体前移一位。
-- **服务方法调用** —— Go 与 Python 的方法载荷不含 FieldMask，C++ 与 C# 含，因而无法跨语言。
 
-改动线格式时，必须同步更新 `rpc_wire_format_tests` 中的黄金向量。详情见知识库 §10 与 §12。
+改动线格式时，必须同步更新上述两组黄金向量。详情见知识库 §10 与 §12。
 
 ### 规则六：提交前必须端到端验证
 

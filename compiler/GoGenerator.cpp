@@ -275,17 +275,17 @@ static void generateFieldSerialize(CodeFile& f, Field& field, const std::string&
     std::string goName = toGoFieldName(field.getNameC());
 
     /* A struct field is reached through the receiver; a method parameter is a
-       plain local, so it must not carry the receiver prefix. */
+       plain local, so it must not carry the receiver prefix. This is the only
+       thing isMethod controls -- both contexts carry a field mask, so the
+       default-value guards below apply uniformly. */
     std::string access = isMethod ? goName : ("s." + goName);
 
     if(field.getArray())
     {
         // Array serialization
-        if(!isMethod) {
-            f.output("// serialize %s", field.getNameC());
-            f.output("if len(s.%s) > 0 {", goName.c_str());
-            f.indent();
-        }
+        f.output("// serialize %s", field.getNameC());
+        f.output("if len(%s) > 0 {", access.c_str());
+        f.indent();
         f.output("if err := %s.WriteDynSize(uint32(len(%s))); err != nil {", recvName.c_str(), access.c_str());
         f.indent();
         f.output("return err");
@@ -326,15 +326,6 @@ static void generateFieldSerialize(CodeFile& f, Field& field, const std::string&
             f.recover();
             f.output("}");
         }
-        else if(field.getType() == FT_FLOAT || field.getType() == FT_DOUBLE)
-        {
-            std::string method = field.getType() == FT_FLOAT ? "WriteFloat32" : "WriteFloat64";
-            f.output("if err := %s.%s(v); err != nil {", recvName.c_str(), method.c_str());
-            f.indent();
-            f.output("return err");
-            f.recover();
-            f.output("}");
-        }
         else
         {
             // Numeric types: write at the declared width.
@@ -347,109 +338,77 @@ static void generateFieldSerialize(CodeFile& f, Field& field, const std::string&
 
         f.recover();
         f.output("}");
-
-        if(!isMethod) {
-            f.recover();
-            f.output("}");
-        }
+        f.recover();
+        f.output("}");
     }
     else
     {
-        // Single field serialization
-        if(!isMethod) {
-            f.output("// serialize %s", field.getNameC());
-        }
+        f.output("// serialize %s", field.getNameC());
 
         if(field.getType() == FT_USER)
         {
-            if(!isMethod) {
-                f.output("if err := %s.Serialize(%s); err != nil {", access.c_str(), recvName.c_str());
-                f.indent();
-                f.output("return err");
-                f.recover();
-                f.output("}");
-            } else {
-                f.output("if err := %s.Serialize(%s); err != nil {", goName.c_str(), recvName.c_str());
-                f.indent();
-                f.output("return err");
-                f.recover();
-                f.output("}");
-            }
+            f.output("if err := %s.Serialize(%s); err != nil {", access.c_str(), recvName.c_str());
+            f.indent();
+            f.output("return err");
+            f.recover();
+            f.output("}");
         }
         else if(field.getType() == FT_STRING)
         {
-            if(!isMethod) {
-                f.output("if s.%s != \"\" {", goName.c_str());
-                f.indent();
-            }
+            f.output("if len(%s) > 0 {", access.c_str());
+            f.indent();
             f.output("if err := %s.WriteString(%s); err != nil {", recvName.c_str(), access.c_str());
             f.indent();
             f.output("return err");
             f.recover();
             f.output("}");
-            if(!isMethod) {
-                f.recover();
-                f.output("}");
-            }
+            f.recover();
+            f.output("}");
         }
         else if(field.getType() == FT_BOOL)
         {
-            /* boolfieldmask: in a struct a bool has no payload byte at all --
-               its value is the mask bit written by the container, so nothing is
-               emitted here. Method parameters carry no mask, so there it is a
-               real byte and must be written. */
-            if(isMethod) {
-                f.output("if err := %s.WriteBool(%s); err != nil {", recvName.c_str(), access.c_str());
-                f.indent();
-                f.output("return err");
-                f.recover();
-                f.output("}");
-            }
+            /* boolfieldmask: a bool has no payload byte in either context -- its
+               value IS the mask bit written by the container, so this branch
+               must stay empty and must not fall through to the numeric branch
+               below, which would emit a spurious byte. */
         }
         else if(field.getType() == FT_ENUM)
         {
-            if(!isMethod) {
-                f.output("if s.%s != %s {", goName.c_str(), getFieldGoDefault(field));
-                f.indent();
-            }
+            f.output("if %s != %s {", access.c_str(), getFieldGoDefault(field));
+            f.indent();
             f.output("if err := %s.WriteUint8(uint8(%s)); err != nil {", recvName.c_str(), access.c_str());
             f.indent();
             f.output("return err");
             f.recover();
             f.output("}");
-            if(!isMethod) {
-                f.recover();
-                f.output("}");
-            }
+            f.recover();
+            f.output("}");
         }
         else
         {
-            // Numeric types
-            if(!isMethod) {
-                f.output("if s.%s != %s {", goName.c_str(), getFieldGoDefault(field));
-                f.indent();
-            }
-
-            // Width-exact: the method follows the declared type, so an int32
-            // occupies 4 bytes on the wire rather than being widened to int64.
+            // Numeric types: write at the declared width.
+            f.output("if %s != %s {", access.c_str(), getFieldGoDefault(field));
+            f.indent();
             f.output("if err := %s.%s(%s); err != nil {", recvName.c_str(), getGoWriteMethod(field), access.c_str());
             f.indent();
             f.output("return err");
             f.recover();
             f.output("}");
-
-            if(!isMethod) {
-                f.recover();
-                f.output("}");
-            }
+            f.recover();
+            f.output("}");
         }
     }
 }
+
 
 static void generateFieldDeserialize(CodeFile& f, Field& field, const std::string& recvName, bool isMethod)
 {
     std::string goName = toGoFieldName(field.getNameC());
     uint32_t maxLen = getFieldMaxLength(field);
+
+    /* Mirrors generateFieldSerialize: isMethod only decides the accessor, since
+       both a struct field and a method parameter are guarded by a field mask. */
+    std::string access = isMethod ? goName : ("s." + goName);
 
     if(field.getArray())
     {
@@ -474,7 +433,7 @@ static void generateFieldDeserialize(CodeFile& f, Field& field, const std::strin
         if(isMethod) {
             f.output("%s := make(%s, size)", goName.c_str(), getFieldGoType(field));
         } else {
-            f.output("s.%s = make(%s, size)", goName.c_str(), getFieldGoType(field));
+            f.output("%s = make(%s, size)", access.c_str(), getFieldGoType(field));
         }
 
         f.recover();
@@ -484,11 +443,7 @@ static void generateFieldDeserialize(CodeFile& f, Field& field, const std::strin
 
         if(field.getType() == FT_USER)
         {
-            if(isMethod) {
-                f.output("if err := %s[i].Deserialize(%s); err != nil {", goName.c_str(), recvName.c_str());
-            } else {
-                f.output("if err := s.%s[i].Deserialize(%s); err != nil {", goName.c_str(), recvName.c_str());
-            }
+            f.output("if err := %s[i].Deserialize(%s); err != nil {", access.c_str(), recvName.c_str());
             f.indent();
             f.output("return err");
             f.recover();
@@ -503,11 +458,7 @@ static void generateFieldDeserialize(CodeFile& f, Field& field, const std::strin
             f.output("return err");
             f.recover();
             f.output("}");
-            if(isMethod) {
-                f.output("%s[i] = %s(eb)", goName.c_str(), field.getUserType()->getNameC());
-            } else {
-                f.output("s.%s[i] = %s(eb)", goName.c_str(), field.getUserType()->getNameC());
-            }
+            f.output("%s[i] = %s(eb)", access.c_str(), field.getUserType()->getNameC());
             f.recover();
         }
         else if(field.getType() == FT_STRING)
@@ -519,11 +470,7 @@ static void generateFieldDeserialize(CodeFile& f, Field& field, const std::strin
             f.output("return err");
             f.recover();
             f.output("}");
-            if(isMethod) {
-                f.output("%s[i] = str", goName.c_str());
-            } else {
-                f.output("s.%s[i] = str", goName.c_str());
-            }
+            f.output("%s[i] = str", access.c_str());
             f.recover();
         }
         else if(field.getType() == FT_BOOL)
@@ -535,11 +482,7 @@ static void generateFieldDeserialize(CodeFile& f, Field& field, const std::strin
             f.output("return err");
             f.recover();
             f.output("}");
-            if(isMethod) {
-                f.output("%s[i] = b", goName.c_str());
-            } else {
-                f.output("s.%s[i] = b", goName.c_str());
-            }
+            f.output("%s[i] = b", access.c_str());
             f.recover();
         }
         else if(field.getType() == FT_FLOAT || field.getType() == FT_DOUBLE)
@@ -552,11 +495,7 @@ static void generateFieldDeserialize(CodeFile& f, Field& field, const std::strin
             f.output("return err");
             f.recover();
             f.output("}");
-            if(isMethod) {
-                f.output("%s[i] = v", goName.c_str());
-            } else {
-                f.output("s.%s[i] = v", goName.c_str());
-            }
+            f.output("%s[i] = v", access.c_str());
             f.recover();
         }
         else
@@ -569,11 +508,7 @@ static void generateFieldDeserialize(CodeFile& f, Field& field, const std::strin
             f.output("return err");
             f.recover();
             f.output("}");
-            if(isMethod) {
-                f.output("%s[i] = %s(v)", goName.c_str(), getFieldGoType(field, false));
-            } else {
-                f.output("s.%s[i] = %s(v)", goName.c_str(), getFieldGoType(field, false));
-            }
+            f.output("%s[i] = %s(v)", access.c_str(), getFieldGoType(field, false));
             f.recover();
         }
 
@@ -583,17 +518,11 @@ static void generateFieldDeserialize(CodeFile& f, Field& field, const std::strin
     else
     {
         // Single field deserialization
-        if(!isMethod) {
-            f.output("// deserialize %s", field.getNameC());
-        }
+        f.output("// deserialize %s", field.getNameC());
 
         if(field.getType() == FT_USER)
         {
-            if(isMethod) {
-                f.output("if err := %s.Deserialize(%s); err != nil {", goName.c_str(), recvName.c_str());
-            } else {
-                f.output("if err := s.%s.Deserialize(%s); err != nil {", goName.c_str(), recvName.c_str());
-            }
+            f.output("if err := %s.Deserialize(%s); err != nil {", access.c_str(), recvName.c_str());
             f.indent();
             f.output("return err");
             f.recover();
@@ -608,28 +537,17 @@ static void generateFieldDeserialize(CodeFile& f, Field& field, const std::strin
             f.output("return err");
             f.recover();
             f.output("}");
-            if(isMethod) {
-                f.output("%s = str", goName.c_str());
-            } else {
-                f.output("s.%s = str", goName.c_str());
-            }
+            f.output("%s = str", access.c_str());
             f.recover();
         }
         else if(field.getType() == FT_BOOL)
         {
-            f.output("b, err := %s.ReadBool()", recvName.c_str());
-            f.indent();
-            f.output("if err != nil {");
-            f.indent();
-            f.output("return err");
-            f.recover();
-            f.output("}");
-            if(isMethod) {
-                f.output("%s = b", goName.c_str());
-            } else {
-                f.output("s.%s = b", goName.c_str());
-            }
-            f.recover();
+            /* boolfieldmask: a bool has no payload byte. The mask bit is the
+               value itself, so it is assigned directly rather than read -- and
+               the caller must consume the bit itself rather than guarding on it.
+               Callers special-case this; the branch is kept identical so a new
+               caller cannot silently read a byte that was never written. */
+            f.output("%s = fm.ReadBit()", access.c_str());
         }
         else if(field.getType() == FT_ENUM)
         {
@@ -640,11 +558,7 @@ static void generateFieldDeserialize(CodeFile& f, Field& field, const std::strin
             f.output("return err");
             f.recover();
             f.output("}");
-            if(isMethod) {
-                f.output("%s = %s(eb)", goName.c_str(), field.getUserType()->getNameC());
-            } else {
-                f.output("s.%s = %s(eb)", goName.c_str(), field.getUserType()->getNameC());
-            }
+            f.output("%s = %s(eb)", access.c_str(), field.getUserType()->getNameC());
             f.recover();
         }
         else if(field.getType() == FT_FLOAT || field.getType() == FT_DOUBLE)
@@ -657,11 +571,7 @@ static void generateFieldDeserialize(CodeFile& f, Field& field, const std::strin
             f.output("return err");
             f.recover();
             f.output("}");
-            if(isMethod) {
-                f.output("%s = v", goName.c_str());
-            } else {
-                f.output("s.%s = v", goName.c_str());
-            }
+            f.output("%s = v", access.c_str());
             f.recover();
         }
         else
@@ -674,11 +584,7 @@ static void generateFieldDeserialize(CodeFile& f, Field& field, const std::strin
             f.output("return err");
             f.recover();
             f.output("}");
-            if(isMethod) {
-                f.output("%s = %s(v)", goName.c_str(), getFieldGoType(field, false));
-            } else {
-                f.output("s.%s = %s(v)", goName.c_str(), getFieldGoType(field, false));
-            }
+            f.output("%s = %s(v)", access.c_str(), getFieldGoType(field, false));
             f.recover();
         }
     }
@@ -974,6 +880,47 @@ static void generateStubMethods(CodeFile& f, Service* s)
         f.output("}");
         f.output("");
 
+        /* The parameter list is encoded exactly like a struct body. A method
+           with no parameters carries no field mask at all, matching C++/C#. */
+        if(method.fields_.size())
+        {
+            size_t fmBytes = method.getFMByteNum();
+
+            f.output("// Write field mask length");
+            f.output("fmLen := uint8(%u)", (unsigned)fmBytes);
+            f.output("if err := writer.WriteUint8(fmLen); err != nil {");
+            f.indent();
+            f.output("return err");
+            f.recover();
+            f.output("}");
+            f.output("");
+
+            f.output("// Write field mask");
+            f.output("fm := rpc.NewFieldMask(%u)", (unsigned)fmBytes);
+            for(size_t j = 0; j < method.fields_.size(); j++)
+            {
+                Field& field = method.fields_[j];
+                std::string goName = toGoFieldName(field.getNameC());
+
+                if(field.getArray())
+                    f.output("fm.WriteBit(len(%s) > 0)", goName.c_str());
+                else if(field.getType() == FT_USER)
+                    f.output("fm.WriteBit(true)");
+                else if(field.getType() == FT_STRING)
+                    f.output("fm.WriteBit(len(%s) > 0)", goName.c_str());
+                else if(field.getType() == FT_BOOL)
+                    f.output("fm.WriteBit(%s)", goName.c_str());
+                else
+                    f.output("fm.WriteBit(%s != %s)", goName.c_str(), getFieldGoDefault(field));
+            }
+            f.output("if err := writer.Write(fm.Bytes()); err != nil {");
+            f.indent();
+            f.output("return err");
+            f.recover();
+            f.output("}");
+            f.output("");
+        }
+
         // Serialize parameters
         f.output("// Serialize parameters");
         for(size_t j = 0; j < method.fields_.size(); j++)
@@ -1155,12 +1102,70 @@ static void generateProxyDispatcher(CodeFile& f, Service* s)
         }
 
         f.output("");
+
+        /* Mirrors the stub: a parameterless method carries no field mask. */
+        if(method.fields_.size())
+        {
+            size_t fmBytes = method.getFMByteNum();
+
+            f.output("// Read field mask length");
+            f.output("actualFmLen, err := reader.ReadUint8()");
+            f.output("if err != nil {");
+            f.indent();
+            f.output("return err");
+            f.recover();
+            f.output("}");
+            f.output("myFmLen := uint8(%u)", (unsigned)fmBytes);
+            f.output("readFmLen := actualFmLen");
+            f.output("if actualFmLen > myFmLen {");
+            f.indent();
+            f.output("readFmLen = myFmLen");
+            f.recover();
+            f.output("}");
+            f.output("// Read field mask");
+            f.output("fmBytes := make([]byte, myFmLen)");
+            f.output("if _, err := reader.Read(fmBytes[:readFmLen]); err != nil {");
+            f.indent();
+            f.output("return err");
+            f.recover();
+            f.output("}");
+            f.output("// Skip remaining field mask bytes");
+            f.output("if actualFmLen > readFmLen {");
+            f.indent();
+            f.output("if mr, ok := reader.(*rpc.MemReader); ok {");
+            f.indent();
+            f.output("if err := mr.Skip(uint32(actualFmLen - readFmLen)); err != nil {");
+            f.indent();
+            f.output("return err");
+            f.recover();
+            f.output("}");
+            f.recover();
+            f.output("}");
+            f.recover();
+            f.output("}");
+            f.output("fm := &rpc.FieldMask{}");
+            f.output("fm.SetBytes(fmBytes)");
+            f.output("");
+        }
+
         for(size_t j = 0; j < method.fields_.size(); j++)
         {
+            Field& field = method.fields_[j];
+            std::string goName = toGoFieldName(field.getNameC());
+
+            /* boolfieldmask: a bool parameter has no payload byte -- the mask
+               bit IS the value, so it is consumed directly rather than used as
+               a guard, and no block is needed. */
+            if(!field.getArray() && field.getType() == FT_BOOL)
+            {
+                f.output("%s = fm.ReadBit()", goName.c_str());
+                continue;
+            }
+
             /* Each parameter is read in its own block: the reader temporaries
                are declared with := and would otherwise collide across the
                parameters of the same method. */
-            f.output("{");
+            f.output("if fm.ReadBit() {");
             f.indent();
             generateFieldDeserialize(f, method.fields_[j], "reader", true);
             f.recover();

@@ -539,3 +539,63 @@ TEST(ServiceProxy, Dispatch_TruncatedBuffer) {
 	TestServiceProxy proxy;
 	EXPECT_FALSE(proxy.dispatch(&r));
 }
+
+// ============================================================
+// Method payload golden vectors
+//
+// The method payload is [methodId][fmLen][fmask][params], identical to a
+// struct body, and a parameterless method carries no mask at all. These pin
+// the exact bytes so the encoders cannot drift apart again -- the roundtrip
+// tests above are satisfied by any self-consistent encoding.
+// ============================================================
+
+namespace {
+
+std::string hexOf(const std::vector<uint8_t>& v) {
+	static const char* kDigits = "0123456789abcdef";
+	std::string s;
+	for (size_t i = 0; i < v.size(); i++) {
+		if (i) s += ' ';
+		s += kDigits[v[i] >> 4];
+		s += kDigits[v[i] & 0x0F];
+	}
+	return s;
+}
+
+} // namespace
+
+TEST(MethodPayloadGolden, AllFieldsPresent) {
+	TestServiceStub stub;
+	stub.method5(1, 2, true, EN2);
+	// pid=4, fmLen=1, mask=0xF0 (i8,u8,bool,enum set), i8=1, u8=2,
+	// then the enum -- the bool occupies no byte, it is the mask bit.
+	EXPECT_EQ(hexOf(stub.lastBuf), std::string("04 00 01 f0 01 02 01"));
+}
+
+TEST(MethodPayloadGolden, AllDefaultsIsMaskOnly) {
+	TestServiceStub stub;
+	stub.method5(0, 0, false, EN1);
+	// Only pid, fmLen and an all-zero mask: every parameter is at its default.
+	EXPECT_EQ(hexOf(stub.lastBuf), std::string("04 00 01 00"));
+}
+
+TEST(MethodPayloadGolden, ParameterlessMethodHasNoMask) {
+	TestDerivedStub stub;
+	stub.method10();
+	// pid=9 and nothing else -- a method with no parameters carries no mask,
+	// matching C++/C#/Go/Python.
+	EXPECT_EQ(hexOf(stub.lastBuf), std::string("09 00"));
+}
+
+TEST(MethodPayloadGolden, ScalarsAtDeclaredWidth) {
+	TestServiceStub stub;
+	stub.method3(1.5, 2.5, 8, 9);
+	EXPECT_EQ(hexOf(stub.lastBuf), std::string(
+		"02 00"                     // pid = 2
+		" 01"                       // fmLen = 1
+		" f0"                       // mask: all four params non-default
+		" 00 00 00 00 00 00 f8 3f"  // double 1.5
+		" 00 00 20 40"              // float 2.5
+		" 08 00 00 00 00 00 00 00"  // int64 8
+		" 09 00 00 00 00 00 00 00")); // uint64 9
+}

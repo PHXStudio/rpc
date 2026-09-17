@@ -40,6 +40,35 @@ static const char* getFieldTypeName(Field& f)
 	}
 }
 
+/** Default value for a C# local, mirroring the initializers the struct fields
+    carry. C#'s definite-assignment rule rejects reading a local that was only
+    assigned inside a conditional, and every method parameter is now read
+    behind a field-mask guard. */
+static const char* getFieldCsDefault(Field& f)
+{
+	static std::string v;
+	if(f.getArray())
+	{
+		v = "new " + std::string(getFieldTypeName(f)) + "[0]";
+		return v.c_str();
+	}
+	switch(f.getType())
+	{
+	case FT_STRING:
+		return "\"\"";
+	case FT_USER:
+		v = "new " + std::string(getFieldTypeName(f)) + "()";
+		return v.c_str();
+	case FT_BOOL:
+		return "false";
+	case FT_ENUM:
+		v = "(" + std::string(getFieldTypeName(f)) + ")0";
+		return v.c_str();
+	default:
+		return "0";
+	}
+}
+
 static void generateEnum(CodeFile& f, Enum* e)
 {
 	f.output("public enum %s : %s", e->getNameC(),getFieldTypeName(e->getSuperType()));
@@ -534,10 +563,11 @@ static void generateMethodDispatcher(CodeFile& f, Service* s, Method& m)
 	for(size_t i = 0; i < m.fields_.size(); i++)
 	{
 		Field& field = m.fields_[i];
-		if(field.getType() == FT_USER && !field.getArray())
-			f.output("%s %s = new %s();", getFieldTypeName(field), field.getNameC(), getFieldTypeName(field));
-		else
-			f.output("%s%s %s;", getFieldTypeName(field), field.getArray()?"[]":"", field.getNameC());
+		f.output("%s%s %s = %s;",
+			getFieldTypeName(field),
+			field.getArray()?"[]":"",
+			field.getNameC(),
+			getFieldCsDefault(field));
 	}
 	generateFieldContainerDeserializeCode(f, &m, "__r__");
 	f.begin();

@@ -168,15 +168,30 @@ static void generateServiceStubMethod(CodeFile& f, size_t id, Method& m)
 	f.indent();
 	f.output("_b_ = []", id);
 	f.output("uint16Writer(_b_, %d, None)", id);
+
+	/* The parameter list is encoded exactly like a struct body: a method with no
+	   parameters carries no field mask at all, matching C++ and C#. */
+	if(m.fields_.size())
+	{
+		f.output("# Write field mask length");
+		f.output("_b_.append(struct.pack('B', %d))", m.getFMByteNum());
+		f.output("_fm_ = FieldMaskWriter(%d)", m.getFMByteNum());
+		f.output("_pfm_ = len(_b_)");
+		f.output("_b_.append('')");
+	}
+
 	for(size_t i = 0; i < m.fields_.size(); i++)
 	{
 		Field& field = m.fields_[i];
-		f.output("write(%sWriter, %s, _b_, %s, None)",
+		f.output("write(%sWriter, %s, _b_, %s, %s)",
 			getFieldTypeName(field),
 			field.getArray()?"True":"False",
-			field.getNameC()
+			field.getNameC(),
+			m.fields_.size()?"_fm_":"None"
 			);
 	}
+	if(m.fields_.size())
+		f.output("_b_[_pfm_] = _fm_.write()");
 	f.output("self.call(_b_)");
 	f.recover();
 }
@@ -216,14 +231,32 @@ static void generateServiceProxy(CodeFile& f, Service* s)
 		Method& method = s->methods_[m];
 		f.output("if _id_ == %d:", mid);
 		f.indent();
+
+		/* Mirrors the stub: a parameterless method carries no field mask. */
+		if(method.fields_.size())
+		{
+			f.output("# Read field mask length");
+			f.output("_actual_fm_len_ = struct.unpack('B', _b_[_p_:_p_+1])[0]");
+			f.output("_p_ += 1");
+			f.output("_read_fm_len_ = min(_actual_fm_len_, %d)", method.getFMByteNum());
+			f.output("_fm_ = FieldMaskReader(_b_, _p_, _read_fm_len_)");
+			f.output("_p_ += _read_fm_len_");
+			f.output("# Skip remaining field mask bytes");
+			f.output("if _actual_fm_len_ > _read_fm_len_:");
+			f.indent();
+			f.output("_p_ = skipReader(_b_, _p_, _actual_fm_len_ - _read_fm_len_)");
+			f.recover();
+		}
+
 		for(size_t fid = 0; fid < method.fields_.size(); fid++)
 		{
 			Field& field = method.fields_[fid];
-			f.output("%s, _p_= read(%sReader, _b_, _p_, %d, %d, None)",
+			f.output("%s, _p_= read(%sReader, _b_, _p_, %d, %d, %s)",
 				field.getNameC(),
 				getFieldTypeName(field),
 				field.getArray()?field.getMaxArrLength():0,
-				getFieldValMax(field)
+				getFieldValMax(field),
+				method.fields_.size()?"_fm_":"None"
 				);
 		}
 		f.begin();
