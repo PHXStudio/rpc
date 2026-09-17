@@ -98,4 +98,14 @@ type ProtocolReader interface {
 
 	// ReadDynSize reads a size value using variable-length encoding
 	ReadDynSize() (uint32, error)
+
+	// Skip advances the stream by n bytes without producing them.
+	//
+	// Generated code uses this to step over the field-mask bytes of a peer
+	// speaking a newer schema, so it is part of the version-compatibility path
+	// and NOT optional: every reader must implement it. It used to be absent
+	// from this interface, which forced generated code to type-assert on
+	// *MemReader before skipping -- silently dropping the skip for any other
+	// reader and shifting every following field.
+	Skip(n uint32) error
 }

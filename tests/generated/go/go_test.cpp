@@ -147,16 +147,20 @@ TEST(GoGenerationTest, ContainsServiceMethods) {
 	std::string outputFile = outputDir + kGeneratedFile;
 	std::string content = readFile(outputFile);
 
-	// Verify method implementations
-	EXPECT_TRUE(contains(content, "func (s *ServiceBaseStub) method1"))
+	// Verify method implementations. Names are exported: Go exposes only
+	// identifiers whose first letter is capitalized, so emitting the IDL name
+	// verbatim left the stub uncallable from any other package. What proves
+	// that is GoServiceGolden, which compiles and runs the generated service
+	// from an external test package; this stays as a cheap textual check.
+	EXPECT_TRUE(contains(content, "func (s *ServiceBaseStub) Method1"))
 		<< "Missing method1 implementation";
-	EXPECT_TRUE(contains(content, "func (s *ServiceBaseStub) method2"))
+	EXPECT_TRUE(contains(content, "func (s *ServiceBaseStub) Method2"))
 		<< "Missing method2 implementation";
 	EXPECT_TRUE(contains(content, "WriteUint16"))
 		<< "Missing method ID writing";
 
 	// Verify dispatch methods
-	EXPECT_TRUE(contains(content, "func (d *ServiceBaseDispatcher) dispatchmethod1"))
+	EXPECT_TRUE(contains(content, "func (d *ServiceBaseDispatcher) dispatchMethod1"))
 		<< "Missing dispatch method";
 	EXPECT_TRUE(contains(content, "Dispatch(reader rpc.ProtocolReader"))
 		<< "Missing Dispatch method";

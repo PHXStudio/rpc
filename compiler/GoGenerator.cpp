@@ -151,6 +151,16 @@ static std::string toGoFieldName(const std::string& idlName)
     return goName;
 }
 
+/* Service method identifiers follow the same export rule as fields, and for the
+   same reason: Go exposes only identifiers whose first letter is capitalized.
+   Emitting the IDL name verbatim left every stub method uncallable and the
+   proxy interface unimplementable from any package other than the generated
+   one, which made the whole service unusable to a real client. */
+static std::string toGoMethodName(Method& m)
+{
+    return toGoFieldName(m.getNameC());
+}
+
 // Convert package name (filename to lowercase)
 static std::string toPackageName(const std::string& filename)
 {
@@ -430,11 +440,13 @@ static void generateFieldDeserialize(CodeFile& f, Field& field, const std::strin
         f.recover();
         f.output("}");
 
-        if(isMethod) {
-            f.output("%s := make(%s, size)", goName.c_str(), getFieldGoType(field));
-        } else {
-            f.output("%s = make(%s, size)", access.c_str(), getFieldGoType(field));
-        }
+        /* `=` and not `:=`, for both a struct field and a method parameter.
+           This emitted `:=` for parameters, which declared a second slice
+           inside the `if fm.ReadBit()` block and shadowed the one declared at
+           the top of the dispatcher: every array parameter reached the handler
+           as nil, with the elements written into a slice that went out of scope
+           immediately. */
+        f.output("%s = make(%s, size)", access.c_str(), getFieldGoType(field));
 
         f.recover();
 
@@ -783,17 +795,17 @@ static void generateStructDecl(CodeFile& f, Struct* s)
         f.recover();
         f.output("}");
 
-        // Skip remaining field mask bytes
+        /* Skip remaining field mask bytes. Skip belongs to ProtocolReader, so
+           call it directly. This used to type-assert on *rpc.MemReader first,
+           which turned the skip into an optional behaviour: with any other
+           reader the assertion failed, the bytes were never skipped, and every
+           following field decoded from the wrong offset without an error. */
         f.output("// Skip remaining field mask bytes");
         f.output("if actualFmLen > readFmLen {");
-        f.indent();
-        f.output("if reader, ok := reader.(*rpc.MemReader); ok {");
         f.indent();
         f.output("if err := reader.Skip(uint32(actualFmLen - readFmLen)); err != nil {");
         f.indent();
         f.output("return err");
-        f.recover();
-        f.output("}");
         f.recover();
         f.output("}");
         f.recover();
@@ -847,8 +859,10 @@ static void generateStubMethods(CodeFile& f, Service* s)
         uint16_t methodId = methodStartId + i;
 
         f.output("");
-        f.output("// %s calls the remote method", method.getNameC());
-        f.output("func (s *%sStub) %s(", s->getNameC(), method.getNameC());
+        std::string goMethodName = toGoMethodName(method);
+
+        f.output("// %s calls the remote method", goMethodName.c_str());
+        f.output("func (s *%sStub) %s(", s->getNameC(), goMethodName.c_str());
 
         // Parameters
         // Parameters. Every one ends with a comma because Go requires a
@@ -953,24 +967,36 @@ static void generateStubDecl(CodeFile& f, Service* s)
         f.output("    beginMethod func() rpc.ProtocolWriter");
         f.output("    endMethod   func()");
         f.output("}");
-        f.output("");
-        f.output("// New%sStub creates a new service stub", s->getNameC());
-        f.output("func New%sStub(", s->getNameC());
-        f.indent();
-        f.output("begin func() rpc.ProtocolWriter,");
-        f.output("end func(),");
-        f.recover();
-        f.output(") *%sStub {", s->getNameC());
-        f.indent();
-        f.output("return &%sStub{", s->getNameC());
-        f.indent();
+    }
+
+    f.output("");
+
+    /* Every stub needs this, derived ones included: the transport callbacks are
+       unexported fields, so without a constructor no other package can build
+       one. A derived stub used to get none -- it embeds its base, but cannot
+       reach the base's unexported fields to initialize it, which left derived
+       services uninstantiable from outside the generated package. */
+    f.output("// New%sStub creates a new service stub", s->getNameC());
+    f.output("func New%sStub(", s->getNameC());
+    f.indent();
+    f.output("begin func() rpc.ProtocolWriter,");
+    f.output("end func(),");
+    f.recover();
+    f.output(") *%sStub {", s->getNameC());
+    f.indent();
+    f.output("return &%sStub{", s->getNameC());
+    f.indent();
+    if(s->super_)
+        f.output("%sStub: *New%sStub(begin, end),", s->super_->getNameC(), s->super_->getNameC());
+    else
+    {
         f.output("beginMethod: begin,");
         f.output("endMethod:   end,");
-        f.recover();
-        f.output("}");
-        f.recover();
-        f.output("}");
     }
+    f.recover();
+    f.output("}");
+    f.recover();
+    f.output("}");
 
     f.output("");
 
@@ -999,7 +1025,7 @@ static void generateProxyDecl(CodeFile& f, Service* s)
         // the method returns error so the dispatcher can forward the handler's
         // result directly.
         f.begin();
-        f.append("%s(", method.getNameC());
+        f.append("%s(", toGoMethodName(method).c_str());
         for(size_t j = 0; j < method.fields_.size(); j++)
         {
             Field& field = method.fields_[j];
@@ -1063,9 +1089,9 @@ static void generateProxyDispatcher(CodeFile& f, Service* s)
         f.indent();
         if(i < inheritedCount)
             f.output("return (&%sDispatcher{}).dispatch%s(reader, handler)",
-                s->super_->getNameC(), method->getNameC());
+                s->super_->getNameC(), toGoMethodName(*method).c_str());
         else
-            f.output("return d.dispatch%s(reader, handler)", method->getNameC());
+            f.output("return d.dispatch%s(reader, handler)", toGoMethodName(*method).c_str());
         f.recover();
     }
 
@@ -1084,8 +1110,10 @@ static void generateProxyDispatcher(CodeFile& f, Service* s)
     {
         Method& method = s->methods_[i];
 
-        f.output("// dispatch%s handles deserialization and dispatch for %s", method.getNameC(), method.getNameC());
-        f.output("func (d *%sDispatcher) dispatch%s(reader rpc.ProtocolReader, handler %sProxy) error {", s->getNameC(), method.getNameC(), s->getNameC());
+        std::string goMethodName = toGoMethodName(method);
+
+        f.output("// dispatch%s handles deserialization and dispatch for %s", goMethodName.c_str(), goMethodName.c_str());
+        f.output("func (d *%sDispatcher) dispatch%s(reader rpc.ProtocolReader, handler %sProxy) error {", s->getNameC(), goMethodName.c_str(), s->getNameC());
         f.indent();
 
         // Declare parameters
@@ -1129,16 +1157,14 @@ static void generateProxyDispatcher(CodeFile& f, Service* s)
             f.output("return err");
             f.recover();
             f.output("}");
+            /* Same as the struct path above: Skip is on the interface, so no
+               type assertion -- see the comment there. */
             f.output("// Skip remaining field mask bytes");
             f.output("if actualFmLen > readFmLen {");
             f.indent();
-            f.output("if mr, ok := reader.(*rpc.MemReader); ok {");
-            f.indent();
-            f.output("if err := mr.Skip(uint32(actualFmLen - readFmLen)); err != nil {");
+            f.output("if err := reader.Skip(uint32(actualFmLen - readFmLen)); err != nil {");
             f.indent();
             f.output("return err");
-            f.recover();
-            f.output("}");
             f.recover();
             f.output("}");
             f.recover();
@@ -1177,7 +1203,7 @@ static void generateProxyDispatcher(CodeFile& f, Service* s)
         // trailing comma before the closing paren.
         f.output("// Call handler");
         f.begin();
-        f.append("return handler.%s(", method.getNameC());
+        f.append("return handler.%s(", toGoMethodName(method).c_str());
         for(size_t j = 0; j < method.fields_.size(); j++)
         {
             Field& field = method.fields_[j];
