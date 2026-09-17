@@ -128,7 +128,7 @@ ctest --test-dir build --output-on-failure -L rpc
 模式文件由 `enum`、`struct`、`service` 三种定义组成，顺序无关（但引用必须先定义）。
 
 ```c
-/* 枚举：成员自动编号 0..n-1，不支持显式赋值 */
+/* 枚举：成员自动编号 0..n-1，不支持显式赋值，也不支持底层类型声明 */
 enum EnumName
 {
 	EN1,
@@ -215,6 +215,7 @@ Foo.rpc(2):syntax error, unexpected '(', expecting '{'
 | 没有的语法 | 已有的语义检查 |
 |---|---|
 | 字段 ID / 序号（由声明顺序隐式决定） | 重复定义名 |
+| 枚举的底层类型（`enum X : int64`）—— 线格式恒为 1 字节，无意义 | 枚举成员重名 |
 | `optional` / `required` / `repeated` | 重复字段名 / 重复参数名 |
 | 字段默认值 | 字段名与已有定义冲突 |
 | package / namespace 声明 | 非法父类型（未定义、自继承、用作类型的 service） |
@@ -786,32 +787,21 @@ Python 与 Go 的两条外部工具链同理：工具链缺失时用例仍然注
 > | `BUILD_TESTING` 判定顺序错误，测试默认不配置 | `include(CTest)` 顺序 | 默认配置即注册测试 |
 > | `version_*` 三个孤儿文件（越界 `skip` 负断言唯一来源） | 从未接入构建 | 断言迁入 `rpc_runtime_edge_tests` 后删除 |
 > | `compiler_test` 中两个指向已删除 `bin/` 的必然失败用例 | 路径未随重命名更新 | 由 `rpc_import_tests` 取代 |
+> | `enum Name : <底层类型>` —— 语法分支既不要成员列表、也不注册定义，两种写法分别是语法错误与静默丢弃 | 未完成的语法分支 | **语法已移除**，见下 |
+>
+> **`enum Name : <底层类型>` 为何移除而非补全**：枚举在线格式上恒为 1 字节
+> uint8（最多 256 个成员），底层类型**永远无法扩大可表示范围**；它唯一的作用
+> 是让宿主语言声明与编码不符（例如 `enum X : int64` 让 `sizeof` 变成 8 而线上仍是
+> 1 字节）。移除后 C++ 仍输出 `enum X : int32_t`、C# 仍输出 `enum X : int`，
+> 生成代码逐字节不变；两种旧写法现在都是普通语法错误，由
+> `CompilerNegative.EnumUnderlyingTypeIsRejected` 守护，
+> `CompilerNegative.PlainEnumIsAccepted` 确认受支持的写法未受影响。
 >
 > **四种语言在已知的全部维度上已一致**（见 §10），
 > 由 §11 的黄金向量用例与 Python 一致性测试守护。
 > 下列条目均为独立于跨语言互通的其余问题。
 
 ### 中等
-
-#### `enum Name : <底层类型>` 是不可用的语法
-
-`实测` · `compiler/rpc.y` 的 `enumeration:` 规则
-
-该分支有两个问题，合起来使这条语法成为死路：
-
-1. 它**不接受成员列表**。`enum E : int64 { A, B };` 报
-   `unexpected '{', expecting ';'` —— 带 `{ enum_items }` 的是**另一个**分支，
-   而那个分支不处理 `: super`。
-2. 它的 action 只做重名检查与 `curEnum_` 初始化，**从不把枚举加入
-   `definitions_`**。因此 `enum E : int64;` 能编译通过（退出码 0），
-   但该枚举不出现在任何后端的产物里，也不报任何警告。
-
-想带成员写不出来，不带成员则被静默丢弃。四个后端行为一致（都丢弃），
-所以不影响跨语言互通，但这条语法目前没有任何可用形态。
-
-覆盖：`CompilerNegative.EnumUnderlyingTypeAcceptsNoMembers` 与
-`EnumUnderlyingTypeIsSilentlyDropped` 把当前行为钉住，将来补全或移除
-该特性时必须同步更新它们。
 
 #### Go 生成代码的 FieldMask 跳过被类型断言限死
 

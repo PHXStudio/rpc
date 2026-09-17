@@ -24,10 +24,13 @@
 cmake -S . -B build
 cmake --build build --target rpc
 
-# 构建并运行测试（BUILD_TESTING 必须显式传，否则 tests/ 不会被配置）
-cmake -S . -B build -DBUILD_TESTING=ON
+# 本机跑测试
+cmake -S . -B build
 cmake --build build
 ctest --test-dir build --output-on-failure -L rpc
+
+# 全量测试（每次改动后必跑，见规则六）
+scripts/docker-test.sh
 
 # 生成代码
 ./build/compiler/rpc -i tests/schema/FullTest.rpc -o out/ -g <cpp|cs|py|go>
@@ -107,13 +110,36 @@ python3 -c "import ast; ast.parse(open('X.py').read())"   # Python 语法
 
 改动线格式时，必须同步更新上述三组。详情见知识库 §10 与 §12。
 
-### 规则六：提交前必须端到端验证
+### 规则六：每次修改完成后用 Docker 跑**全量**测试
 
-单元测试全绿**不代表**链路可用。涉及生成器或运行时的改动，至少完成一次：
+**本机测试全绿既不代表链路可用，也不代表测试真的跑了。** 两条实测教训：
+
+- 9 个 Go 用例在本机（macOS，文件系统大小写不敏感）全过，在容器里全挂 ——
+  测试读取 `fulltest.go`，而编译器产出 `FullTest.go`。本机永远发现不了。
+- 容器里没有 python3 时，两个 Python 用例**根本不注册**，`ctest` 照样报
+  「100% passed」，而 Python 后端一行没跑。
+
+所以每次改动完成后必须：
+
+```bash
+scripts/docker-test.sh          # 等价于 build --target linux-tester + run
+# 或分两步：
+docker build --target linux-tester -t rpc-linux-test .
+docker run --rm rpc-linux-test  # 容器内执行 cmake --build --target test
+```
+
+**不能只看 `100% passed`**，还要：
+
+- **对用例总数**：应有 163 个（新增用例时同步更新此数）。数量对不上说明
+  有 target 没被配置或没被构建。
+- **确认没有 `Skipped`**：跳过意味着对应工具链缺失，那个后端当次并未被验证。
+  容器内出现 Skipped 就是 Dockerfile 出了问题，要修 Dockerfile 而不是忽略。
+
+超出容器能力的验证（真实跨进程字节交换等）仍按下面的老规矩做：
 
 1. `cmake --build build --target rpc` 重新构建（**不要用 `build/` 里的既有二进制，它可能是过期的**）
 2. 用真实 schema 生成目标语言代码
-3. 编译生成的代码
+3. 编译生成的代码（**每个后端都要真实编译**，文本断言不算数）
 4. 若涉及跨语言，实际交换一次字节流并比对
 
 ---
@@ -161,7 +187,11 @@ BREAKING: Go 侧线格式变更，旧版 Go 对端无法互通。
 - **`build/` 里的 `rpc` 可能是过期的** —— 修改生成器后不重新构建，会得到与源码不符的产物。
 - **`-g` 传未知值会静默回落到 `cpp`**，不会报错。生成结果不对时先确认后端名拼写。
 - **产物文件名取自 schema 文件的主文件名**，不是其中定义的结构体名。
-- **`ctest -N` 报 `Total Tests: 0`** 说明配置时没传 `-DBUILD_TESTING=ON`。
+- **生成物文件名取自 schema 文件的主文件名**，且**区分大小写** —— `FullTest.rpc`
+  产出 `FullTest.go`。macOS 文件系统不区分大小写，所以写错大小写在本机不会报错，
+  到 Linux 才炸（见规则六）。
+- **`Skipped` 不是通过**。dotnet / Python / Go 缺失时用例如实报告为 Skipped，
+  意味着那个后端当次没被验证；先修环境再谈绿灯。
 - **`#import` 失败会直接 `exit(1)`**，不是抛错——作为库调用时会导致宿主进程退出。
 - **`tests/runtime/compiler_test.cpp` 中的 `ImportRpcCpp` / `ExampleRpcCpp` 必然失败**：它们引用的 `bin/` 目录已被删除。这是已知的失效用例，不是你的改动引入的。
 - **`conn/` 是 ACE 遗留死代码**，不在任何构建中，不要试图启用。
