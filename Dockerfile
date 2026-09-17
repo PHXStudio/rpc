@@ -14,9 +14,18 @@ RUN apt-get update \
 FROM base AS linux-builder
 ARG BUILD_TESTING=OFF
 COPY . /src
+# Build identity, declared after COPY so a new version invalidates only the build
+# layer and not the source copy. .dockerignore excludes .git/, so the compiler
+# cannot work out which commit it came from and would otherwise say "unknown".
+# scripts/docker-build.sh and CI both pass these; a bare `docker build` gets the
+# fallback, which is the honest answer for a tree with no history.
+ARG RPC_VERSION_STRING=
+ARG RPC_BUILD_COMMIT=
 RUN cmake -S /src -B /src/build \
         -DBUILD_TESTING=${BUILD_TESTING} \
         -DCMAKE_BUILD_TYPE=Release \
+        -DRPC_VERSION_STRING=${RPC_VERSION_STRING} \
+        -DRPC_BUILD_COMMIT=${RPC_BUILD_COMMIT} \
  && cmake --build /src/build
 
 ################################################################
@@ -28,12 +37,17 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends mingw-w64 \
  && rm -rf /var/lib/apt/lists/*
 COPY . /src
+# See linux-builder for why the version is injected rather than detected.
+ARG RPC_VERSION_STRING=
+ARG RPC_BUILD_COMMIT=
 RUN cmake -S /src -B /src/build \
         -DBUILD_TESTING=${BUILD_TESTING} \
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_SYSTEM_NAME=Windows \
         -DCMAKE_C_COMPILER=x86_64-w64-mingw32-gcc \
         -DCMAKE_CXX_COMPILER=x86_64-w64-mingw32-g++ \
+        -DRPC_VERSION_STRING=${RPC_VERSION_STRING} \
+        -DRPC_BUILD_COMMIT=${RPC_BUILD_COMMIT} \
  && cmake --build /src/build
 
 ################################################################

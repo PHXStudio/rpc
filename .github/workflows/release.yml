@@ -1,0 +1,166 @@
+name: release
+
+# Every commit on main produces a set of binaries, gated on the full Docker test
+# suite. See docs/plans/per-commit-release.md for the reasoning and the traps.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  # Not cancel-in-progress: interrupting the publish job part-way could leave the
+  # rolling release holding new Linux/Windows binaries next to stale macOS ones.
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  # Work out the version once. Doing it in each job would duplicate the logic,
+  # and a version that drifts between jobs is the exact failure this prevents.
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      commit: ${{ steps.v.outputs.commit }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Mandatory: rev-list --count returns 1 in a shallow clone, which
+          # silently yields "1.0.1-<sha>". A wrong version that looks plausible.
+          fetch-depth: 0
+      - id: v
+        run: |
+          echo "version=$(scripts/version.sh)" >> "$GITHUB_OUTPUT"
+          echo "commit=$(git rev-parse --short=7 HEAD)" >> "$GITHUB_OUTPUT"
+
+  # The gate. Nothing is published unless the whole suite ran and passed.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Full test suite (rule six)
+        # pipefail matters: without it the pipeline's status is tee's, which is
+        # always 0, and a failing suite would look like a success here.
+        run: |
+          set -o pipefail
+          scripts/docker-test.sh 2>&1 | tee ctest-report.txt
+      - name: Assert the report is complete
+        # Catches what "100% tests passed" hides: unregistered tests (missing
+        # python3) and skipped ones (missing Go toolchain).
+        run: scripts/assert-test-report.sh ctest-report.txt 176
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ctest-report
+          path: ctest-report.txt
+
+  binaries:
+    name: linux + windows
+    needs: [version, test]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build
+        # The Docker build context has no .git/ (.dockerignore), so the version
+        # has to be passed in or the binaries report "unknown".
+        run: |
+          docker buildx build \
+            --target output \
+            --output type=local,dest=dist \
+            --build-arg RPC_VERSION_STRING="${{ needs.version.outputs.version }}" \
+            --build-arg RPC_BUILD_COMMIT="${{ needs.version.outputs.commit }}" \
+            .
+      - name: Stage
+        run: |
+          # The names below hardcode x86_64. Fail loudly if the runner is not
+          # that, rather than shipping an arm64 binary labelled x86_64.
+          ARCH="$(uname -m)"
+          if [ "$ARCH" != "x86_64" ]; then
+            echo "runner arch is $ARCH but artifacts are named x86_64" >&2
+            exit 1
+          fi
+          mkdir -p release
+          mv dist/rpc-linux release/rpc-linux-x86_64
+          mv dist/rpc-windows.exe release/rpc-windows-x86_64.exe
+          chmod +x release/rpc-linux-x86_64
+      - name: The Linux binary must name the commit it came from
+        run: |
+          ./release/rpc-linux-x86_64 --version
+          test "$(./release/rpc-linux-x86_64 --version)" \
+             = "rpc ${{ needs.version.outputs.version }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rpc-binaries-linux-windows
+          path: release/*
+          if-no-files-found: error
+
+  macos:
+    needs: [version, test]
+    runs-on: macos-14 # arm64
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
+            -DRPC_VERSION_STRING="${{ needs.version.outputs.version }}" \
+            -DRPC_BUILD_COMMIT="${{ needs.version.outputs.commit }}"
+      - name: Build
+        run: cmake --build build --target rpc
+      - name: The binary must name the commit it came from
+        run: |
+          ./build/compiler/rpc --version
+          test "$(./build/compiler/rpc --version)" \
+             = "rpc ${{ needs.version.outputs.version }}"
+      - name: Stage
+        run: |
+          mkdir -p release
+          cp build/compiler/rpc release/rpc-macos-arm64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rpc-binaries-macos
+          path: release/*
+          if-no-files-found: error
+
+  publish:
+    needs: [version, binaries, macos]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: rpc-binaries-*
+          merge-multiple: true
+          path: release
+      - name: Checksums
+        working-directory: release
+        run: |
+          sha256sum rpc-* > SHA256SUMS
+          cat SHA256SUMS
+      - name: Per-commit artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rpc-${{ needs.version.outputs.version }}
+          path: release/*
+          retention-days: 90
+      - name: Refresh the rolling latest pre-release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Move the rolling tag first. `gh release upload` never moves a tag, so
+          # without this the release would keep pointing at whichever commit
+          # created it, and every download link would name the wrong commit.
+          git tag -f latest "${{ github.sha }}"
+          git push -f origin refs/tags/latest
+
+          gh release view latest >/dev/null 2>&1 \
+            || gh release create latest --prerelease --title "Latest build" \
+                 --notes "Rolling pre-release, rebuilt on every commit to main."
+
+          gh release upload latest release/* --clobber
+          gh release edit latest --notes \
+            "Rolling pre-release, rebuilt on every commit to main. Currently ${{ needs.version.outputs.version }} (commit ${{ needs.version.outputs.commit }})."

@@ -6,7 +6,13 @@ cd "$(dirname "$0")/.."
 IMAGE="rpc-windows"
 DIST="dist"
 
-docker build --target windows-builder -t "$IMAGE" .
+# See docker-build.sh: the context has no .git/, so the version must be injected.
+VERSION="$(scripts/version.sh)"
+COMMIT="$(git rev-parse --short=7 HEAD)"
+
+docker build --target windows-builder -t "$IMAGE" \
+    --build-arg RPC_VERSION_STRING="$VERSION" \
+    --build-arg RPC_BUILD_COMMIT="$COMMIT" .
 mkdir -p "$DIST"
 
 TMP=$(docker create "$IMAGE")

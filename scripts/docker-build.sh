@@ -6,7 +6,14 @@ cd "$(dirname "$0")/.."
 IMAGE="rpc-linux"
 DIST="dist"
 
-docker build --target linux-builder -t "$IMAGE" .
+# The build context excludes .git/ (.dockerignore), so the compiler cannot work
+# out which commit it came from -- it has to be told.
+VERSION="$(scripts/version.sh)"
+COMMIT="$(git rev-parse --short=7 HEAD)"
+
+docker build --target linux-builder -t "$IMAGE" \
+    --build-arg RPC_VERSION_STRING="$VERSION" \
+    --build-arg RPC_BUILD_COMMIT="$COMMIT" .
 mkdir -p "$DIST"
 
 TMP=$(docker create "$IMAGE")

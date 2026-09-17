@@ -9,6 +9,9 @@ output/
 # CMake dependencies
 _deps/
 
+# Docker build output (scripts/docker-build*.sh)
+dist/
+
 # .NET build output (CrossLangVerifier)
 tests/cs/bin/
 tests/cs/obj/

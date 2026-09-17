@@ -1,4 +1,6 @@
 build/
 .git/
+# docker-build*.sh output; build output must not be baked into the context
+dist/
 tests/cs/bin/
 tests/cs/obj/
