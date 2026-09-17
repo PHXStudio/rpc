@@ -21,18 +21,31 @@ add_custom_command(
 )
 
 # ---------- FullTest schema (all types) ----------
+# Also the only schema with services, so the C# and Go service tests build
+# against it. Note the Go output is "FullTest.go" -- the product keeps the
+# schema file's capitalization, and getting it wrong passes on macOS and fails
+# on Linux.
 set(_full_schema "${CMAKE_CURRENT_SOURCE_DIR}/schema/FullTest.rpc")
 set(_full_gen_cpp "${CMAKE_CURRENT_BINARY_DIR}/generated/fulltest_cpp")
+set(_full_gen_cs "${CMAKE_CURRENT_BINARY_DIR}/generated/fulltest_cs")
+set(_full_gen_go "${CMAKE_CURRENT_BINARY_DIR}/generated/fulltest_go")
 set(_full_gen_cpp_slash "${_full_gen_cpp}/")
+set(_full_gen_cs_slash "${_full_gen_cs}/")
+set(_full_gen_go_slash "${_full_gen_go}/")
 
 add_custom_command(
   OUTPUT
     "${_full_gen_cpp}/FullTest.h"
     "${_full_gen_cpp}/FullTest.cpp"
-  COMMAND ${CMAKE_COMMAND} -E make_directory "${_full_gen_cpp}"
+    "${_full_gen_cs}/FullTest.cs"
+    "${_full_gen_go}/FullTest.go"
+  COMMAND ${CMAKE_COMMAND} -E make_directory
+          "${_full_gen_cpp}" "${_full_gen_cs}" "${_full_gen_go}"
   COMMAND "$<TARGET_FILE:rpc>" -i "${_full_schema}" -o "${_full_gen_cpp_slash}" -g cpp
+  COMMAND "$<TARGET_FILE:rpc>" -i "${_full_schema}" -o "${_full_gen_cs_slash}" -g cs
+  COMMAND "$<TARGET_FILE:rpc>" -i "${_full_schema}" -o "${_full_gen_go_slash}" -g go
   DEPENDS rpc "${_full_schema}"
-  COMMENT "Generating FullTest (cpp) from RPC schema"
+  COMMENT "Generating FullTest (cpp/cs/go) from RPC schema"
   VERBATIM
 )
 
@@ -284,6 +297,43 @@ if(RPC_TEST_DOTNET)
   add_custom_target(rpc_interop_verifier_build DEPENDS "${_rpc_interop_verifier_stamp}")
 endif()
 
+# ---------- ServiceVerifier (.NET) ----------
+# Drives the generated C# service code -- stub payloads and the dispatcher --
+# against the same vectors the C++ suite and the Go test use. Building it also
+# compiles the service half of FullTest.cs, which nothing had compiled before:
+# only its struct serialization was ever exercised.
+set(RPC_TEST_SERVICE_VERIFIER_DLL_ABS "")
+
+if(RPC_TEST_DOTNET)
+  set(_rpc_service_verifier_dll "${CMAKE_CURRENT_SOURCE_DIR}/cs/bin/${RPC_TEST_VERIFIER_CONFIGURATION}/net6.0/ServiceVerifier.dll")
+  get_filename_component(RPC_TEST_SERVICE_VERIFIER_DLL_ABS "${_rpc_service_verifier_dll}" ABSOLUTE)
+endif()
+
+if(RPC_TEST_DOTNET)
+  set(_rpc_service_verifier_stamp "${CMAKE_CURRENT_BINARY_DIR}/service_verifier_dotnet.stamp")
+  file(GLOB _rpc_service_verifier_cs CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/cs/ServiceVerifier.cs"
+  )
+  add_custom_command(
+    OUTPUT "${_rpc_service_verifier_stamp}"
+    COMMAND ${RPC_TEST_DOTNET} build "${CMAKE_CURRENT_SOURCE_DIR}/cs/ServiceVerifier.csproj"
+            --configuration "${RPC_TEST_VERIFIER_CONFIGURATION}"
+            --verbosity minimal
+            "-p:GeneratedCsDir=${_full_gen_cs}"
+    COMMAND ${CMAKE_COMMAND} -E touch "${_rpc_service_verifier_stamp}"
+    DEPENDS
+      "${_full_gen_cs}/FullTest.cs"
+      "${CMAKE_CURRENT_SOURCE_DIR}/cs/ServiceVerifier.csproj"
+      ${_rpc_service_verifier_cs}
+    COMMENT "Building ServiceVerifier (.NET) for service tests"
+    VERBATIM
+  )
+  # ALL rather than pulled in by another target: unlike the interop verifier,
+  # which a gtest invokes, nothing else depends on this one -- its test runs the
+  # assembly directly.
+  add_custom_target(rpc_service_verifier_build ALL DEPENDS "${_rpc_service_verifier_stamp}")
+endif()
+
 # ---------- Config header ----------
 set(RPC_TEST_SCHEMA_DIR "${CMAKE_CURRENT_SOURCE_DIR}/schema")
 set(RPC_TEST_OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/compiler_output")
@@ -525,12 +575,12 @@ if(RPC_TEST_GO)
   file(MAKE_DIRECTORY "${_interop_go_mod}")
 
   configure_file(
-    "${CMAKE_CURRENT_SOURCE_DIR}/go/go.mod.in"
+    "${CMAKE_CURRENT_SOURCE_DIR}/go/interop/go.mod.in"
     "${_interop_go_mod}/go.mod"
     @ONLY
   )
   configure_file(
-    "${CMAKE_CURRENT_SOURCE_DIR}/go/interop_golden_test.go"
+    "${CMAKE_CURRENT_SOURCE_DIR}/go/interop/interop_golden_test.go"
     "${_interop_go_mod}/interop_golden_test.go"
     COPYONLY
   )
@@ -550,12 +600,49 @@ if(RPC_TEST_GO)
     WORKING_DIRECTORY "${_interop_go_mod}"
   )
   set_tests_properties(GoInteropGolden PROPERTIES LABELS "rpc")
+
+  # ---------- Go service test ----------
+  # The only test that exercises the generated Go service code -- stub payloads
+  # and the dispatcher -- and the only one written as an external test package,
+  # which is what makes the generated API's exportedness a compile-time
+  # requirement rather than a convention.
+  set(_service_go_mod "${CMAKE_CURRENT_BINARY_DIR}/service_go_module")
+  file(MAKE_DIRECTORY "${_service_go_mod}")
+
+  configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/go/service/go.mod.in"
+    "${_service_go_mod}/go.mod"
+    @ONLY
+  )
+  configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/go/service/service_golden_test.go"
+    "${_service_go_mod}/service_golden_test.go"
+    COPYONLY
+  )
+  add_custom_command(
+    OUTPUT "${_service_go_mod}/FullTest.go"
+    COMMAND ${CMAKE_COMMAND} -E copy
+            "${_full_gen_go}/FullTest.go" "${_service_go_mod}/FullTest.go"
+    DEPENDS "${_full_gen_go}/FullTest.go"
+    COMMENT "Staging generated Go service code into a testable module"
+    VERBATIM
+  )
+  add_custom_target(rpc_service_go_module ALL DEPENDS "${_service_go_mod}/FullTest.go")
+
+  add_test(
+    NAME GoServiceGolden
+    COMMAND "${RPC_TEST_GO}" test ./...
+    WORKING_DIRECTORY "${_service_go_mod}"
+  )
+  set_tests_properties(GoServiceGolden PROPERTIES LABELS "rpc")
 else()
   # Registered anyway, so a missing toolchain shows up as "skipped" in the
   # summary instead of silently shrinking the test list.
   add_test(NAME GoInteropGolden
            COMMAND "${CMAKE_COMMAND}" -E echo "SKIP: no Go toolchain found at configure time")
-  set_tests_properties(GoInteropGolden PROPERTIES
+  add_test(NAME GoServiceGolden
+           COMMAND "${CMAKE_COMMAND}" -E echo "SKIP: no Go toolchain found at configure time")
+  set_tests_properties(GoInteropGolden GoServiceGolden PROPERTIES
     LABELS "rpc" SKIP_REGULAR_EXPRESSION "SKIP:")
 endif()
 
@@ -594,6 +681,23 @@ else()
   add_test(NAME PythonInteropGolden
            COMMAND "${CMAKE_COMMAND}" -E echo "SKIP: no Python interpreter found at configure time")
   set_tests_properties(PythonWireFormatGolden PythonInteropGolden PROPERTIES
+    LABELS "rpc" SKIP_REGULAR_EXPRESSION "SKIP:")
+endif()
+
+# ---------- C# service test ----------
+# The only test that runs the generated C# service code. Registered even
+# without a .NET SDK so a missing toolchain shows up as skipped instead of
+# silently shrinking the test list.
+if(RPC_TEST_DOTNET)
+  add_test(
+    NAME CSharpServiceGolden
+    COMMAND ${RPC_TEST_DOTNET} exec "${RPC_TEST_SERVICE_VERIFIER_DLL_ABS}"
+  )
+  set_tests_properties(CSharpServiceGolden PROPERTIES LABELS "rpc")
+else()
+  add_test(NAME CSharpServiceGolden
+           COMMAND "${CMAKE_COMMAND}" -E echo "SKIP: no .NET SDK found at configure time")
+  set_tests_properties(CSharpServiceGolden PROPERTIES
     LABELS "rpc" SKIP_REGULAR_EXPRESSION "SKIP:")
 endif()
 

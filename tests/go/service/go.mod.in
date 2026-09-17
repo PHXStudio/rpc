@@ -1,0 +1,7 @@
+module fulltest
+
+go 1.21
+
+require github.com/rpc/runtime v0.0.0
+
+replace github.com/rpc/runtime => @RPC_RUNTIME_GO_DIR@
