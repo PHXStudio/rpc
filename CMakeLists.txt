@@ -1,6 +1,4 @@
-################################################################
-# bintalk
-################################################################
+
 cmake_minimum_required(VERSION 3.16)
 project(rpc LANGUAGES CXX)
 include(GNUInstallDirs)
