@@ -564,6 +564,8 @@ C++ 后端是唯一支持代码注入的后端：`#< ... #>` 把片段插入文�
 - `write(wtr, isArray, buf, v, fm)` 调度器
 - `skipReader(b, p, n)`
 - 生成代码形如 `self.f, _p_ = read(int32Reader, _b_, _p_, 0, 0, _fm_)`
+- 包名为 `rpc`（`runtime/py/rpc/`），`pip install ./runtime/py` 即可装入；
+  生成代码的 `from rpc.writer import *` 直接可用
 
 ### Mem* 与 Bytes* 的语义漂移
 
@@ -746,15 +748,9 @@ C++ 与 C# 的互操作通过**临时二进制文件交换**验证，而不是�
 
 #### Python 运行时是 Python 2 风格
 
-`实测` · `runtime/py/bin/writer.py` · `runtime/py/bin/reader.py`
+`实测` · `runtime/py/rpc/writer.py` · `runtime/py/rpc/reader.py`
 
 生成的 `serialize()` 往同一个 list 里混装 `bytes` 与 `str`（`b.append('\001')` 追加的是 str），Python 3 下 `b''.join(b)` 直接抛 `TypeError`。读取侧的 `stringReader` / `enumReader` 用了**裸 `raise`**（不在 `except` 块内），实际抛出的是 `RuntimeError: No active exception to re-raise`，而不是预期的长度校验异常。代码本身可运行（实测手动归一化后往返正确），但需要调用方自行处理类型。
-
-#### Python 包名三处不一致
-
-`源码` · `compiler/PYGenerator.cpp:262` · `runtime/py/setup.py.in:3`
-
-生成代码 import `rpc.writer`，运行时目录却叫 `runtime/py/bin/`，而 `setup.py.in` 声明的包名仍是 `bin`。安装产物与生成代码对不上，需要手工改名或调整 `sys.path`。
 
 #### C++ 运行时用 `c_str()` 去 const 写入
 
@@ -785,9 +781,9 @@ if (space_ < wtptr_ + len) return;
 
 #### 未接线的遗留资产
 
-`源码` · `conn/` · `Config.h.in` · `runtime/py/setup.py.in`
+`源码` · `conn/` · `Config.h.in`
 
-`conn/` 是一套依赖 **ACE 框架**的 TCP 连接 / 多路复用库，**不在任何构建中**，仓库里也没有 ACE 依赖，且缺少顶层 `conn/CMakeLists.txt`（只有 `conn/src/` 下的），即使想启用也无法 `add_subdirectory`。`Config.h` 生成后无任何源文件 include；`runtime/py/setup.py.in` 不被任何 CMake 处理。
+`conn/` 是一套依赖 **ACE 框架**的 TCP 连接 / 多路复用库，**不在任何构建中**，仓库里也没有 ACE 依赖，且缺少顶层 `conn/CMakeLists.txt`（只有 `conn/src/` 下的），即使想启用也无法 `add_subdirectory`。`Config.h` 生成后无任何源文件 include。
 
 ---
 
@@ -799,7 +795,7 @@ if (space_ < wtptr_ + len) return;
 | `runtime/cpp/` | C++ 运行时头文件（仅头文件） | 仅 include 路径 |
 | `runtime/cs/` | C# 运行时源码 | 由 csproj 引用 |
 | `runtime/go/` | Go 运行时包 `rpc` | 由 go.mod 引用 |
-| `runtime/py/bin/` | Python 运行时 | 否 |
+| `runtime/py/` | Python 运行时（包名 `rpc`） | 否 |
 | `tests/` | GoogleTest 用例、示例 schema、.NET 验证器 | 需显式开启 |
 | `conn/` | ACE 连接库遗留 | 否（死代码） |
 | `scripts/` | Docker 构建脚本、CSV→schema 转换工具 | — |

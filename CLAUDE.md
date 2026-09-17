@@ -81,7 +81,7 @@ python3 -c "import ast; ast.parse(open('X.py').read())"   # Python 语法
 |---|---|
 | C# 运行时与生成代码 | `namespace rpc` / `rpc.ProtocolWriter` |
 | Go 包与模块 | `package rpc` / `github.com/rpc/runtime` |
-| Python 导入 | `from rpc.writer import *` |
+| Python 包与导入 | 包目录 `runtime/py/rpc/`，`from rpc.writer import *` |
 
 ### 规则五：跨语言兼容性是默认要求
 
