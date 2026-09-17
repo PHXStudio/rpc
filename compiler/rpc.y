@@ -66,21 +66,7 @@ definition:
 
 /*enumeration*/
 enumeration:
-	TOKEN_ENUM
-	TOKEN_IDENTIFIER ':' enumeration_super 
-	{
-		// Check enum name.
-		if( Compiler::inst().findDefinition( $2 ) )
-		{
-			Compiler::inst().outputErrorFL("duplicated definition \"%s\".\n", $2.c_str()); 
-			YYERROR; 
-		};
-		
-		// Init current enum.
-		Compiler::inst().curEnum_ = Enum(Compiler::inst().curFilename_, $2);
-	}
-    |
-    TOKEN_ENUM 
+    TOKEN_ENUM
     TOKEN_IDENTIFIER
     {
     	// Check enum name.
@@ -101,25 +87,15 @@ enumeration:
 	}
 	;
 
-/*enum super type*/
-enumeration_super:
-	TOKEN_INT64	    { Compiler::inst().curEnum_.super_.setType(FT_INT64); }
-	|
-	TOKEN_UINT64	{ Compiler::inst().curEnum_.super_.setType( FT_UINT64); }
-	|
-	TOKEN_INT32	    { Compiler::inst().curEnum_.super_.setType(FT_INT32); }
-	|
-	TOKEN_UINT32	{ Compiler::inst().curEnum_.super_.setType(FT_UINT32); }
-	|
-	TOKEN_INT16	    { Compiler::inst().curEnum_.super_.setType(FT_INT16); }
-	|
-	TOKEN_UINT16	{ Compiler::inst().curEnum_.super_.setType(FT_UINT16); }
-	|   
-	TOKEN_INT8	    { Compiler::inst().curEnum_.super_.setType(FT_INT8); }
-	|
-	TOKEN_UINT8	    { Compiler::inst().curEnum_.super_.setType(FT_UINT8); }
-	|
-    ;
+/* An "enum Name : <type>" production used to live here. It never worked: the
+   branch accepted no member list, and its action never added the enum to
+   definitions_, so `enum E : int64;` parsed cleanly and was then dropped from
+   every backend's output.
+
+   Removed rather than completed. The wire format carries an enum as a single
+   uint8 (at most 256 enumerators), so an underlying type could never widen the
+   representable range -- all it could do is make the host-language declaration
+   disagree with the encoding. */
 
 /*enum_items*/
 enum_items:

@@ -66,7 +66,9 @@ static const char* getFieldCppType(Field& f, bool withArray = true)
 static void generateEnumDecl(CodeFile& f, Enum* e)
 {
 	f.output("// enum %s", e->getNameC());
-	f.output("enum %s : %s", e->getNameC(),getFieldCppType(e->getSuperType()));
+	/* The underlying type is fixed at int32_t: an enum is one uint8 on the wire
+	   (<= 256 enumerators), so a wider host type would only misdescribe it. */
+	f.output("enum %s : int32_t", e->getNameC());
 	f.output("{");
 	f.indent();
 	for(size_t i = 0; i < e->items_.size(); i++)

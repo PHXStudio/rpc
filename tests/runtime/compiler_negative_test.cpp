@@ -61,35 +61,28 @@ TEST(CompilerNegative, ServiceAsFieldTypeIsRejected) {
 		"service S { m1(); };\nstruct Foo { S a_; };\n"), 0);
 }
 
-/* `enum Name : <type>` is in the grammar but is not usable.
+/* An "enum Name : <type>" production used to exist in the grammar, but it was
+   unusable: the branch took no member list, and its action never registered the
+   enum as a definition, so a bare `enum E : int64;` parsed cleanly and was
+   silently dropped from every backend's output.
 
-   The rule for that branch (compiler/rpc.y, `enumeration:`) accepts no member
-   list -- a following '{' is a syntax error -- and its action never pushes the
-   enum into definitions_, so a bare `enum E : int64;` parses cleanly and then
-   vanishes from every backend's output.
-
-   Both halves are pinned so that whoever completes or removes the feature has
-   to come here and update the expectations. See docs/knowledge-base.md. */
-TEST(CompilerNegative, EnumUnderlyingTypeAcceptsNoMembers) {
+   It has been removed rather than completed -- an enum is one uint8 on the
+   wire, so an underlying type could never widen the representable range. Both
+   spellings are now ordinary syntax errors. */
+TEST(CompilerNegative, EnumUnderlyingTypeIsRejected) {
+	// With a member list.
 	EXPECT_NE(compileBody(makeOutDir("neg_enum_super_members"),
 		"enum E : int64\n{\n\tE1,\n};\n"), 0);
+
+	// And bare -- this one used to parse and vanish without a word.
+	EXPECT_NE(compileBody(makeOutDir("neg_enum_super_bare"),
+		"enum E : int64;\n"), 0);
 }
 
-TEST(CompilerNegative, EnumUnderlyingTypeIsSilentlyDropped) {
-	const std::string outDir = makeOutDir("neg_enum_super_drop");
-	mkdirp(outDir);
-
-	const std::string path = outDir + "/dropped.rpc";
-	{
-		std::ofstream f(path.c_str());
-		f << "enum E : int64;\n\nstruct Foo { int32 a_; };\n";
-		f.close();
-	}
-
-	// Accepted without complaint...
-	ASSERT_EQ(runCompiler(path, outDir, "cpp"), 0);
-	// ...but the enum never reaches the generated header.
-	EXPECT_FALSE(fileContains(outDir + "/dropped.h", "enum E"));
+/* The syntax that IS supported still works: a plain enum with a member list. */
+TEST(CompilerNegative, PlainEnumIsAccepted) {
+	EXPECT_EQ(compileBody(makeOutDir("neg_enum_plain"),
+		"enum E\n{\n\tE1,\n\tE2,\n};\n\nstruct Foo { E e_; };\n"), 0);
 }
 
 /* Control: a well-formed schema is accepted, so a passing test above cannot be

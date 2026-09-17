@@ -13,11 +13,11 @@
 static const int kFileLevelInjected = 42;
 #>
 
-/* Note: `enum Name : <type>` exists in the grammar but is unusable -- that
-   branch accepts no member list, and does not add the enum to the definition
-   list either, so the declaration is accepted and then silently dropped. It is
-   recorded as a known gap in docs/knowledge-base.md and exercised (as a
-   negative case) by CompilerNegative.EnumUnderlyingTypeIsUnusable. */
+/* Note: an `enum Name : <type>` production was removed from the grammar. It
+   never worked (no member list, and the definition was never registered), and
+   it could not have meant much anyway -- an enum is one uint8 on the wire, so
+   an underlying type can never widen the representable range. See
+   CompilerNegative.EnumUnderlyingTypeIsRejected and docs/knowledge-base.md. */
 
 /* Ten fields, so the field mask needs two bytes: (10-1)/8+1 = 2. Every other
    test schema stays within one byte. */

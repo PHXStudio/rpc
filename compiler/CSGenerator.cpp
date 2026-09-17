@@ -71,7 +71,8 @@ static const char* getFieldCsDefault(Field& f)
 
 static void generateEnum(CodeFile& f, Enum* e)
 {
-	f.output("public enum %s : %s", e->getNameC(),getFieldTypeName(e->getSuperType()));
+	// Fixed at int, matching the C++ backend's int32_t -- see CppGenerator.cpp.
+	f.output("public enum %s : int", e->getNameC());
 	f.output("{");
 	f.indent();
 	for(size_t i = 0; i < e->items_.size(); i++)

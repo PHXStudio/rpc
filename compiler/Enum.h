@@ -13,15 +13,16 @@ public:
 	Enum(const std::string& f, const std::string& n)
 		:Definition(f, n)
 	{
-		super_.setType(FT_INT32);
 	}
 
 	/** Return whether an enumerator label exists. */
 	bool findItem( const std::string& item );
-	Field &getSuperType(){return super_;}
 	virtual Enum* getEnum() { return this; }
 
-	Field						super_;
+	/* There is no "underlying type" member. An enum travels as a single uint8
+	   (at most 256 enumerators), so a declared width could never widen the
+	   representable range; the backends emit their own fixed 32-bit declaration
+	   instead. See the note in rpc.y. */
 	std::vector< std::string >	items_;	///< Enumerator names.
 };
 
