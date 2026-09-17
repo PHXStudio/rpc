@@ -7,6 +7,7 @@
 #include <vector>
 #include <sstream>
 
+#include "CrossLangTest.h"
 #include "FullTest.h"
 
 namespace {
@@ -836,4 +837,77 @@ TEST(JsonTest, Roundtrip_MultipleCycles) {
 	EXPECT_EQ(decoded2.enum_, EN3);
 	ASSERT_EQ(decoded2.int32Array_.size(), 3u);
 	EXPECT_EQ(decoded2.int32Array_[0], 10);
+}
+
+// ============================================================
+// Exact JSON text
+// ============================================================
+
+/* Everything else in this file either round-trips through toJson/loadJson or
+   asserts a substring, so a change to the JSON *shape* -- field order, the
+   separators, how defaults and empty containers are rendered -- would pass
+   unnoticed. These pin the exact text.
+
+   Note the deliberate difference from the binary format: there, a field equal
+   to its default is omitted and the mask bit carries its absence. JSON has no
+   mask, so every field is written every time. */
+
+TEST(JsonGolden, StructTypeExactText) {
+	StructType s;
+	s.aaa_ = "test-aaa";
+	s.bbb_ = -99;
+
+	std::stringstream ss;
+	s.toJson(ss);
+
+	EXPECT_EQ(ss.str(),
+		"{\"aaa_\":\"test-aaa\",\n"
+		"\"bbb_\":-99\n"
+		"}");
+}
+
+/* A default-valued field is still emitted -- unlike the binary encoding, which
+   would send only the mask bit. */
+TEST(JsonGolden, DefaultsAreStillEmitted) {
+	StructType s;
+
+	std::stringstream ss;
+	s.toJson(ss);
+
+	EXPECT_EQ(ss.str(),
+		"{\"aaa_\":\"\",\n"
+		"\"bbb_\":0\n"
+		"}");
+}
+
+/* bytes is an array<uint8> on the wire and a JSON number array in text. */
+TEST(JsonGolden, BytesBecomeNumberArray) {
+	CrossLangPayload p;
+	p.i32_ = 0;
+	p.s_ = "";
+	p.b_.push_back(0x01);
+	p.b_.push_back(0xDE);
+
+	std::stringstream ss;
+	p.toJson(ss);
+
+	EXPECT_EQ(ss.str(),
+		"{\"i32_\":0,\n"
+		"\"s_\":\"\",\n"
+		"\"b_\":[1,222]\n"
+		"}");
+}
+
+/* needBracket=false drops the enclosing braces but keeps the trailing
+   newline, so a caller can splice the body into its own object. */
+TEST(JsonGolden, NeedBracketFalseOmitsBraces) {
+	StructType s;
+	s.bbb_ = 7;
+
+	std::stringstream ss;
+	s.toJson(ss, false);
+
+	EXPECT_EQ(ss.str(),
+		"\"aaa_\":\"\",\n"
+		"\"bbb_\":7\n");
 }

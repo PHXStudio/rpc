@@ -1,0 +1,45 @@
+/* IDL edge cases the other schemas never reach: C++ code injection, an enum
+   with an explicit underlying type, and a struct wide enough to need more than
+   one field-mask byte.
+
+   Note for anyone editing this file: the snippet escapes end at the first
+   "#>" / "#}" they see, so the injected text itself must not contain those
+   two-character sequences -- not even inside a comment. */
+
+/* File-level C++ snippet. Collected only for the root file and inserted
+   verbatim into the generated header. The C++ backend is the only one that
+   supports this -- see docs/knowledge-base.md. */
+#<// Injected at file scope by the file-level snippet escape.
+static const int kFileLevelInjected = 42;
+#>
+
+/* Note: `enum Name : <type>` exists in the grammar but is unusable -- that
+   branch accepts no member list, and does not add the enum to the definition
+   list either, so the declaration is accepted and then silently dropped. It is
+   recorded as a known gap in docs/knowledge-base.md and exercised (as a
+   negative case) by CompilerNegative.EnumUnderlyingTypeIsUnusable. */
+
+/* Ten fields, so the field mask needs two bytes: (10-1)/8+1 = 2. Every other
+   test schema stays within one byte. */
+struct ManyFields
+{
+	int32 f0_;
+	int32 f1_;
+	int32 f2_;
+	int32 f3_;
+	int32 f4_;
+	int32 f5_;
+	int32 f6_;
+	int32 f7_;
+	int32 f8_;
+	int32 f9_;
+};
+
+/* Struct-level C++ snippet, inserted into this struct's declaration. */
+struct WithSnippet
+{
+	#{// Injected into the struct body by the struct-level snippet escape.
+	int injectedMember_;
+	#}
+	int32 normal_;
+};

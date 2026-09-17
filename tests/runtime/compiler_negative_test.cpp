@@ -61,6 +61,37 @@ TEST(CompilerNegative, ServiceAsFieldTypeIsRejected) {
 		"service S { m1(); };\nstruct Foo { S a_; };\n"), 0);
 }
 
+/* `enum Name : <type>` is in the grammar but is not usable.
+
+   The rule for that branch (compiler/rpc.y, `enumeration:`) accepts no member
+   list -- a following '{' is a syntax error -- and its action never pushes the
+   enum into definitions_, so a bare `enum E : int64;` parses cleanly and then
+   vanishes from every backend's output.
+
+   Both halves are pinned so that whoever completes or removes the feature has
+   to come here and update the expectations. See docs/knowledge-base.md. */
+TEST(CompilerNegative, EnumUnderlyingTypeAcceptsNoMembers) {
+	EXPECT_NE(compileBody(makeOutDir("neg_enum_super_members"),
+		"enum E : int64\n{\n\tE1,\n};\n"), 0);
+}
+
+TEST(CompilerNegative, EnumUnderlyingTypeIsSilentlyDropped) {
+	const std::string outDir = makeOutDir("neg_enum_super_drop");
+	mkdirp(outDir);
+
+	const std::string path = outDir + "/dropped.rpc";
+	{
+		std::ofstream f(path.c_str());
+		f << "enum E : int64;\n\nstruct Foo { int32 a_; };\n";
+		f.close();
+	}
+
+	// Accepted without complaint...
+	ASSERT_EQ(runCompiler(path, outDir, "cpp"), 0);
+	// ...but the enum never reaches the generated header.
+	EXPECT_FALSE(fileContains(outDir + "/dropped.h", "enum E"));
+}
+
 /* Control: a well-formed schema is accepted, so a passing test above cannot be
    an artefact of the harness always reporting failure. */
 TEST(CompilerNegative, WellFormedSchemaIsAccepted) {

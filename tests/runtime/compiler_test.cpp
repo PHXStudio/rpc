@@ -72,3 +72,53 @@ TEST(Compiler, UnknownGeneratorFallsBackToCpp) {
 	EXPECT_TRUE(fileExists(outDir + "/FullTest.h"))
 		<< "unknown -g silently produced C++ output";
 }
+
+/* ---------- Edge.rpc: C++ code injection and a multi-byte field mask ---------- */
+
+/* #< ... #> injects at file scope, #{ ... #} into the enclosing struct body.
+   This checks the generated text; that the injected code actually compiles is
+   covered by rpc_wire_format_tests, which includes this header. */
+TEST(Compiler, EdgeRpcCppInjectsSnippets) {
+	const std::string outDir = makeOutDir("edge_cpp");
+	mkdirp(outDir);
+
+	ASSERT_EQ(runCompiler(schemaPath("Edge.rpc"), outDir, "cpp"), 0);
+
+	const std::string header = outDir + "/Edge.h";
+	EXPECT_TRUE(fileContains(header, "kFileLevelInjected"))
+		<< "file-level #< ... #> snippet missing from the header";
+	EXPECT_TRUE(fileContains(header, "injectedMember_"))
+		<< "struct-level #{ ... #} snippet missing from the header";
+}
+
+/* Both escapes are documented as C++-only. The other three backends must
+   ignore them rather than emit the raw text, which would not compile. */
+TEST(Compiler, EdgeRpcSnippetsAreCppOnly) {
+	const char* generators[] = { "cs", "py", "go" };
+	const char* outputs[] = { "Edge.cs", "Edge.py", "Edge.go" };
+
+	for (size_t i = 0; i < 3; i++) {
+		const std::string outDir = makeOutDir(std::string("edge_") + generators[i]);
+		mkdirp(outDir);
+
+		ASSERT_EQ(runCompiler(schemaPath("Edge.rpc"), outDir, generators[i]), 0)
+			<< "generator=" << generators[i];
+
+		const std::string out = outDir + "/" + outputs[i];
+		EXPECT_FALSE(fileContains(out, "kFileLevelInjected"))
+			<< generators[i] << " emitted the C++-only file-level snippet";
+		EXPECT_FALSE(fileContains(out, "injectedMember_"))
+			<< generators[i] << " emitted the C++-only struct-level snippet";
+	}
+}
+
+/* Ten fields need (10-1)/8+1 = 2 mask bytes; every other test schema stays
+   within a single byte. */
+TEST(Compiler, EdgeRpcCoversMultiByteMask) {
+	const std::string outDir = makeOutDir("edge_mask");
+	mkdirp(outDir);
+
+	ASSERT_EQ(runCompiler(schemaPath("Edge.rpc"), outDir, "cpp"), 0);
+	EXPECT_TRUE(fileContains(outDir + "/Edge.h", "struct ManyFields"));
+	EXPECT_TRUE(fileContains(outDir + "/Edge.h", "struct WithSnippet"));
+}

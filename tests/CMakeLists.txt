@@ -428,11 +428,13 @@ target_link_libraries(rpc_service_tests PRIVATE GTest::gtest_main GTest::gtest)
 add_executable(rpc_json_tests
   runtime/json_test.cpp
   "${_full_gen_cpp}/FullTest.cpp"
+  "${_gen_cpp}/CrossLangTest.cpp"
 )
 add_dependencies(rpc_json_tests rpc)
 target_include_directories(rpc_json_tests PRIVATE
   "${CMAKE_SOURCE_DIR}/runtime/cpp"
   "${_full_gen_cpp}"
+  "${_gen_cpp}"
   "${rapidjson_SOURCE_DIR}/include"
 )
 target_compile_features(rpc_json_tests PRIVATE cxx_std_11)
@@ -512,6 +514,13 @@ if(RPC_TEST_GO)
     WORKING_DIRECTORY "${_interop_go_mod}"
   )
   set_tests_properties(GoInteropGolden PROPERTIES LABELS "rpc")
+else()
+  # Registered anyway, so a missing toolchain shows up as "skipped" in the
+  # summary instead of silently shrinking the test list.
+  add_test(NAME GoInteropGolden
+           COMMAND "${CMAKE_COMMAND}" -E echo "SKIP: no Go toolchain found at configure time")
+  set_tests_properties(GoInteropGolden PROPERTIES
+    LABELS "rpc" SKIP_REGULAR_EXPRESSION "SKIP:")
 endif()
 
 # ---------- Python conformance test ----------
@@ -540,6 +549,16 @@ if(Python3_Interpreter_FOUND)
             "${CMAKE_SOURCE_DIR}/runtime/py"
   )
   set_tests_properties(PythonInteropGolden PROPERTIES LABELS "rpc")
+else()
+  # Registered anyway: without this the two Python tests are absent from
+  # `ctest -N` entirely, so a container with no interpreter reports a clean
+  # run while the Python backend is never exercised.
+  add_test(NAME PythonWireFormatGolden
+           COMMAND "${CMAKE_COMMAND}" -E echo "SKIP: no Python interpreter found at configure time")
+  add_test(NAME PythonInteropGolden
+           COMMAND "${CMAKE_COMMAND}" -E echo "SKIP: no Python interpreter found at configure time")
+  set_tests_properties(PythonWireFormatGolden PythonInteropGolden PROPERTIES
+    LABELS "rpc" SKIP_REGULAR_EXPRESSION "SKIP:")
 endif()
 
 # ---------- Discover tests ----------

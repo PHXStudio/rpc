@@ -225,7 +225,14 @@ TEST(CrossLangFile, CsProducesCppConsumes) {
 	::remove(path.c_str());
 }
 #else
-TEST(CrossLangFile, SkippedNoDotnet) {
+/* Registered under their real names so they still appear in `ctest -N` and
+   report as skipped. A placeholder with a made-up name made the tests vanish
+   from the test list entirely, which reads the same as "covered" if you only
+   look at the summary line. */
+TEST(CrossLangFile, CppProducesCsConsumes) {
+	GTEST_SKIP() << "dotnet was not found at CMake configure time; cross-language file tests disabled.";
+}
+TEST(CrossLangFile, CsProducesCppConsumes) {
 	GTEST_SKIP() << "dotnet was not found at CMake configure time; cross-language file tests disabled.";
 }
 #endif

@@ -150,7 +150,9 @@ TEST(InteropCrossLang, CsDecodesGoldenVector) {
 	std::remove(path.c_str());
 }
 #else
-TEST(InteropCrossLang, SkippedNoDotnet) {
+/* Registered under its real name so it still shows up as skipped rather than
+   disappearing from the test list -- see cross_lang_file_test.cpp. */
+TEST(InteropCrossLang, CsDecodesGoldenVector) {
 	GTEST_SKIP() << "dotnet was not found at CMake configure time; C# interop test disabled.";
 }
 #endif

@@ -260,7 +260,12 @@ TEST(FullCrossLangFile, CsProducesCppConsumes) {
 	::remove(path.c_str());
 }
 #else
-TEST(FullCrossLangFile, SkippedNoDotnet) {
+/* Registered under their real names so they still appear in `ctest -N` and
+   report as skipped -- see the note in cross_lang_file_test.cpp. */
+TEST(FullCrossLangFile, CppProducesCsConsumes) {
+	GTEST_SKIP() << "dotnet was not found at CMake configure time; cross-language file tests disabled.";
+}
+TEST(FullCrossLangFile, CsProducesCppConsumes) {
 	GTEST_SKIP() << "dotnet was not found at CMake configure time; cross-language file tests disabled.";
 }
 #endif
