@@ -3,9 +3,13 @@
 #include<stdlib.h>
 static const char Deli = ';';
 
-Args::Args(int argc, char* argv[], const char* shortopts)
+Args::Args(int argc, char* argv[], const char* shortopts, const char* longopts)
 {
 	SetShortKey(shortopts);
+	// Long names must be registered before Scan(): Scan matches long options by
+	// name, and one with no token registered yet is dropped without a word.
+	if (NULL != longopts)
+		SetLongKey(longopts);
 	Scan(argc, argv);
 }
 
@@ -20,6 +24,7 @@ void Args::SetShortKey(const char* shortopts)
 
 		Token token;
 		token.ShortKey = shortopts[i];
+		token.Seen = false;
 		Tokens.push_back(token);
 	}
 }
@@ -34,6 +39,42 @@ void Args::SetLongKey(char shortkey, const char* longkey)
 			return;
 		}
 	}
+}
+
+void Args::SetLongKey(const char* longopts)
+{
+	if (NULL == longopts)
+		return;
+
+	const std::string spec(longopts);
+	size_t pos = 0;
+	while (pos < spec.size())
+	{
+		size_t end = spec.find(Deli, pos);
+		if (end == std::string::npos)
+			end = spec.size();
+
+		const std::string item = spec.substr(pos, end - pos);
+		pos = end + 1;
+
+		const size_t eq = item.find('=');
+		if (item.empty() || eq == std::string::npos || eq == 0)
+			continue;
+
+		SetLongKey(item[0], item.substr(eq + 1).c_str());
+	}
+}
+
+bool Args::Has(char shortkey)
+{
+	Token* ptoken = GetToken(shortkey);
+	return NULL != ptoken && ptoken->Seen;
+}
+
+bool Args::Has(const char* longkey)
+{
+	Token* ptoken = GetToken(longkey);
+	return NULL != ptoken && ptoken->Seen;
 }
 
 void Args::Scan(int argc, char* argv[])
@@ -56,6 +97,15 @@ void Args::Scan(int argc, char* argv[])
 			{
 				shortkey = argv[i][1];
 			}
+
+			// Record the match here rather than when a value arrives: a
+			// flag-style option never has one, so waiting for a value would
+			// leave it indistinguishable from an option that was never given.
+			Token* pseen = GetToken(shortkey);
+			if (NULL == pseen)
+				pseen = GetToken(longkey.c_str());
+			if (NULL != pseen)
+				pseen->Seen = true;
 		}
 		else
 		{

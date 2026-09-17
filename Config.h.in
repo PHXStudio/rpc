@@ -3,6 +3,10 @@
 
 #define RPC_VERSION_MAJOR @RPC_VERSION_MAJOR@
 #define RPC_VERSION_MINOR @RPC_VERSION_MINOR@
+/** Release identity, e.g. "1.0.42-a0a058e" or a tag name. */
+#define RPC_VERSION_STRING "@RPC_VERSION_STRING@"
+/** Short commit this binary was built from, or "unknown". */
+#define RPC_BUILD_COMMIT "@RPC_BUILD_COMMIT@"
 #define RPC_BIG_ENDIAN @RPC_BIG_ENDIAN@
 
 #endif//__CONFIG_H__
