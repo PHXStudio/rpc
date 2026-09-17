@@ -130,7 +130,7 @@ docker run --rm rpc-linux-test  # 容器内执行 cmake --build --target test
 
 **不能只看 `100% passed`**，还要：
 
-- **对用例总数**：应有 163 个（新增用例时同步更新此数）。数量对不上说明
+- **对用例总数**：应有 171 个（新增用例时同步更新此数）。数量对不上说明
   有 target 没被配置或没被构建。
 - **确认没有 `Skipped`**：跳过意味着对应工具链缺失，那个后端当次并未被验证。
   容器内出现 Skipped 就是 Dockerfile 出了问题，要修 Dockerfile 而不是忽略。

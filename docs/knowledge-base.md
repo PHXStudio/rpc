@@ -355,7 +355,14 @@ int32 值 0x12345678
 | `float` / `double` | 4 / 8 字节 IEEE-754 小端 | — |
 | 数组 | `dynSize(count)` + 元素顺序排布 | 元素无独立标签 |
 
-字符编码不是协议的一部分。只有 **C# 运行时显式做 UTF-8**（`Encoding.UTF8`），C++ / Go / Python 按原始字节序列处理，编码由调用方负责。
+字符编码不是协议的一部分：线上始终是原始字节。运行时层面，**C# 与 Python 显式做 UTF-8**
+（`Encoding.UTF8` / `str.encode('utf-8')`），C++ 与 Go 按原始字节序列处理，编码由调用方负责。
+
+> **上表的每个上限都由 `rpc_protocol_limit_tests` 强制验证**
+>
+> `string[N]`、`bytes[N]`、`array[N]`、数组元素的上界、以及枚举越界，各有一条
+> 「边界内必须接受」与一条「越界必须拒绝」的用例 —— 只有负例的话，一个「什么都
+> 拒绝」的读取器也能通过。这些上限此前只写在本文档里，没有任何断言。
 
 ### 继承的布局：每层一个掩码段
 
@@ -664,6 +671,7 @@ Python 输出，`y_ = 3` —— 同样是 12 字节，掩码差一位：
 | `rpc_compiler_negative_tests` | **编译器负例**：坏 schema 必须非零退出；`enum : 类型` 的两种失效形态 | 否 |
 | `rpc_import_tests` | `#import`：定义摊平、无悬空引用、缺失导入致命 | 否 |
 | `rpc_runtime_edge_tests` | `skip` 边界、版本兼容读路径、`dynSize`/整数/浮点字节 golden、MemWriter 溢出 | 否 |
+| `rpc_protocol_limit_tests` | **协议上限必须被强制执行**：枚举越界、`string[N]`/`bytes[N]`/`array[N]` 及元素上界，各含边界内与越界两种情形 | 否 |
 | `rpc_service_tests` | Stub / Proxy 与报文分发 | 否 |
 | `rpc_json_tests` | JSON 序列化与反序列化；含 `JsonGolden.*` 的**硬编码 JSON 文本** | 否 |
 | `rpc_go_generator_tests` | Go 产物**文本断言**（不编译） | 否 |
@@ -884,5 +892,5 @@ if (space_ < wtptr_ + len) return;
 `#import` 四端修复、Python 运行时的字符串/布尔/空 struct 缺陷、C# 的 `CS0108`/`CS1522`、
 Go 测试套件恢复可编译、`dynSize`/整数/浮点/JSON 的字节 golden、以及 `InteropFull`
 四端共享黄金向量；工具链缺失时用例改为注册后跳过，Docker 的 tester 阶段补齐 python3 与 Go。
-测试用例从 126 个（124 通过 / 2 失败）增至 **163 个全部通过**。
+测试用例从 126 个（124 通过 / 2 失败）增至 **171 个全部通过**。
 所有标注 **实测** 的结论均在重新构建编译器后复现，原始字节输出已列在对应段落中。*
