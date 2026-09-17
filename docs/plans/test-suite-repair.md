@@ -14,9 +14,13 @@
 | 0 前置缺陷修复 | ✅ | D1–D9 全部修复并实测确认；另发现并修复 Python `array<bool>` 读取（D8）与 `boolWriter`（D9） |
 | 1 清理失效资产 | ✅ | 删除 4 个废弃文件与 6 个空目录；越界 `skip` 断言已先行迁入 `rpc_runtime_edge_tests` |
 | — `#import` 修复 | ✅ | **计划外**：实测发现四端全部不可用，经确认后修复（定义摊平 + 移除悬空引用） |
-| 2 补齐零覆盖 | ⚠️ 部分 | 已完成：空 struct、编译器负例、`#import`、`skip` 边界。**未完成**：`#< #>`/`#{ #}` 代码注入、`enum : 底层类型`、`dynSize`/`int16`/`uint16` 的 C++ golden、JSON golden |
+| 2 补齐零覆盖 | ✅ | 空 struct、编译器负例、`#import`、`skip` 边界、`#< #>`/`#{ #}` 代码注入、多字节掩码、`dynSize`/整数/浮点字节 golden、JSON 文本 golden |
 | 3 跨语言验证 | ✅ | `InteropFull.rpc` + 四端共享黄金向量（C++/C#/Python/Go），每端都真正运行产物 |
-| 4 工程链路 | ❌ 未开始 | Docker 仍缺 python3，Python 测试在容器内不注册 |
+| 4 工程链路 | ✅ | Docker 补 python3 与 Go 1.21；工具链缺失时用例注册后跳过（实测确认报告为 Skipped 而非消失） |
+
+**`enum Name : <底层类型>` 未按原计划"补测试"** —— 实测发现该语法没有任何可用形态
+（不接受成员列表，且裸声明会被静默丢弃），已改为两条负例测试记录当前行为，并记入
+知识库 §12。补全或移除该特性需要设计决策，不在本次范围。
 
 新增测试目标：`rpc_compiler_negative_tests`、`rpc_import_tests`、`rpc_runtime_edge_tests`、
 `rpc_interop_crosslang_tests`、`GoInteropGolden`、`PythonInteropGolden`。

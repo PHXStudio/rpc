@@ -659,12 +659,12 @@ Python 输出，`y_ = 3` —— 同样是 12 字节，掩码差一位：
 | `rpc_serialization_tests` | 内存往返 + C++↔C# 文件交换 | 是（可跳过） |
 | `rpc_full_schema_tests` | 全类型 schema 往返 | 否 |
 | `rpc_full_crosslang_tests` | 跨语言（含 enum / 数组） | 是（可跳过） |
-| `rpc_compiler_tests` | 调用编译器并检查产物文本 | 否 |
-| `rpc_compiler_negative_tests` | **编译器负例**：坏 schema 必须非零退出 | 否 |
+| `rpc_compiler_tests` | 调用编译器并检查产物文本；含 `Edge.rpc` 的代码注入与多字节掩码 | 否 |
+| `rpc_compiler_negative_tests` | **编译器负例**：坏 schema 必须非零退出；`enum : 类型` 的两种失效形态 | 否 |
 | `rpc_import_tests` | `#import`：定义摊平、无悬空引用、缺失导入致命 | 否 |
-| `rpc_runtime_edge_tests` | `skip` 边界、版本兼容读路径、MemWriter 溢出 | 否 |
+| `rpc_runtime_edge_tests` | `skip` 边界、版本兼容读路径、`dynSize`/整数/浮点字节 golden、MemWriter 溢出 | 否 |
 | `rpc_service_tests` | Stub / Proxy 与报文分发 | 否 |
-| `rpc_json_tests` | JSON 序列化与反序列化 | 否 |
+| `rpc_json_tests` | JSON 序列化与反序列化；含 `JsonGolden.*` 的**硬编码 JSON 文本** | 否 |
 | `rpc_go_generator_tests` | Go 产物**文本断言**（不编译） | 否 |
 | `rpc_wire_format_tests` | **字节级黄金向量**（见下） | 否 |
 | `rpc_interop_crosslang_tests` | InteropFull 向量交给 C# 解码并重编码 | 是（可跳过） |
@@ -719,7 +719,13 @@ C++ 与 C# 的互操作通过**临时二进制文件交换**验证，而不是�
 - 运行期 C++ 侧写临时 `.bin` 文件（用 PID 隔离并发），再通过 `dotnet exec` 启动验证器进程，以退出码判定结果。
 - 字符串与字节数组以**十六进制**传参，规避跨平台参数编码差异。
 
-找不到 `dotnet` 时，对应用例编译成 `GTEST_SKIP()`，**跳过而非失败**。
+找不到 `dotnet` 时，对应用例编译成 `GTEST_SKIP()`，**跳过而非失败**，并且
+**仍以真实用例名注册** —— 早先用一个 `SkippedNoDotnet` 占位名代替，会让这些
+用例从 `ctest -N` 里彻底消失，只看汇总行与「已覆盖」无法区分。
+
+Python 与 Go 的两条外部工具链同理：工具链缺失时用例仍然注册，只是报告为
+`Skipped`（CMake 侧用 `SKIP_REGULAR_EXPRESSION`）。这一条曾经很要命 ——
+`PythonWireFormatGolden` 在容器里根本不注册，`ctest` 却显示 100% 通过。
 
 > **Go 与 Python 的接入方式**
 >
@@ -777,6 +783,26 @@ C++ 与 C# 的互操作通过**临时二进制文件交换**验证，而不是�
 > 下列条目均为独立于跨语言互通的其余问题。
 
 ### 中等
+
+#### `enum Name : <底层类型>` 是不可用的语法
+
+`实测` · `compiler/rpc.y` 的 `enumeration:` 规则
+
+该分支有两个问题，合起来使这条语法成为死路：
+
+1. 它**不接受成员列表**。`enum E : int64 { A, B };` 报
+   `unexpected '{', expecting ';'` —— 带 `{ enum_items }` 的是**另一个**分支，
+   而那个分支不处理 `: super`。
+2. 它的 action 只做重名检查与 `curEnum_` 初始化，**从不把枚举加入
+   `definitions_`**。因此 `enum E : int64;` 能编译通过（退出码 0），
+   但该枚举不出现在任何后端的产物里，也不报任何警告。
+
+想带成员写不出来，不带成员则被静默丢弃。四个后端行为一致（都丢弃），
+所以不影响跨语言互通，但这条语法目前没有任何可用形态。
+
+覆盖：`CompilerNegative.EnumUnderlyingTypeAcceptsNoMembers` 与
+`EnumUnderlyingTypeIsSilentlyDropped` 把当前行为钉住，将来补全或移除
+该特性时必须同步更新它们。
 
 #### Go 生成代码的 FieldMask 跳过被类型断言限死
 
@@ -857,5 +883,7 @@ if (space_ < wtptr_ + len) return;
 
 *初版基于 `main` 分支 `923d720`（2026-09-17）。同日对测试套件做了一轮修复与补全：
 `#import` 四端修复、Python 运行时的字符串/布尔/空 struct 缺陷、C# 的 `CS0108`/`CS1522`、
-Go 测试套件恢复可编译，并新增 `InteropFull` 四端共享黄金向量（当前 150 个 CTest 用例全绿）。
+Go 测试套件恢复可编译、`dynSize`/整数/浮点/JSON 的字节 golden、以及 `InteropFull`
+四端共享黄金向量；工具链缺失时用例改为注册后跳过，Docker 的 tester 阶段补齐 python3 与 Go。
+测试用例从 126 个（124 通过 / 2 失败）增至 **163 个全部通过**。
 所有标注 **实测** 的结论均在重新构建编译器后复现，原始字节输出已列在对应段落中。*
