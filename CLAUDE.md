@@ -32,6 +32,9 @@ ctest --test-dir build --output-on-failure -L rpc
 # 全量测试（每次改动后必跑，见规则六）
 scripts/docker-test.sh
 
+# 确认手上这个二进制是哪个提交构建的
+./build/compiler/rpc --version
+
 # 生成代码
 ./build/compiler/rpc -i tests/schema/FullTest.rpc -o out/ -g <cpp|cs|py|go>
 ```
@@ -137,10 +140,14 @@ docker run --rm rpc-linux-test  # 容器内执行 cmake --build --target test
 
 **不能只看 `100% passed`**，还要：
 
-- **对用例总数**：应有 173 个（新增用例时同步更新此数）。数量对不上说明
+- **对用例总数**：应有 176 个（新增用例时同步更新此数）。数量对不上说明
   有 target 没被配置或没被构建。
 - **确认没有 `Skipped`**：跳过意味着对应工具链缺失，那个后端当次并未被验证。
   容器内出现 Skipped 就是 Dockerfile 出了问题，要修 Dockerfile 而不是忽略。
+
+CI 把这两条变成了机器判定（`scripts/assert-test-report.sh`），不再靠肉眼看汇总行。
+该脚本能抓**总数不符**与 ctest 层面的 `***Skipped`；**抓不到** `RPC_HAVE_DOTNET=0`
+导致的 `GTEST_SKIP()` —— 那种情况 ctest 报 Passed 且总数不变。详见知识库 §11。
 
 超出容器能力的验证（真实跨进程字节交换等）仍按下面的老规矩做：
 
@@ -148,6 +155,23 @@ docker run --rm rpc-linux-test  # 容器内执行 cmake --build --target test
 2. 用真实 schema 生成目标语言代码
 3. 编译生成的代码（**每个后端都要真实编译**，文本断言不算数）
 4. 若涉及跨语言，实际交换一次字节流并比对
+
+---
+
+### 规则七：发行版本由 CI 产出，不要手工发布
+
+每次 push 到 `main` 自动产出 Linux / Windows / macOS 三份二进制，
+流程见 [.github/workflows/release.yml](.github/workflows/release.yml)，
+设计背景与踩过的坑见 [docs/plans/per-commit-release.md](docs/plans/per-commit-release.md)。
+
+- **发布以全量测试为门禁**：`test` job 不过，什么都不产出。
+- 版本号 `1.0.<提交数>-<短sha>`（HEAD 在 `v*` tag 上时用 tag 名）由
+  [scripts/version.sh](scripts/version.sh) 统一计算，脚本与 CI 共用。
+  它是**编译期常量**，所以换版本必须重新编译，重命名文件没有用。
+- `.dockerignore` 排除了 `.git/`，容器内推不出提交号，一律经
+  `--build-arg RPC_VERSION_STRING=... RPC_BUILD_COMMIT=...` 注入。
+  **漏传不会报错**，产物会安静地变成 `1.0.0-unknown`——改 Dockerfile 时留意。
+- 版本信息只进二进制，**不进线格式**，对规则一无影响。
 
 ---
 

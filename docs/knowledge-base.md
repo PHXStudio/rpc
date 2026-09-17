@@ -78,15 +78,36 @@ cmake --build build
 
 ```
 rpc -i <输入.rpc> -o <输出目录/> -g <cpp|cs|py|go>
+rpc --version | -v
 ```
 
 | 选项 | 含义 | 备注 |
 |---|---|---|
 | `-i` | 模式文件路径 | 无默认值，缺失时无友好报错 |
-| `-o` | 输出目录 | 末尾 `/` 或 `\` 会自动补全 |
+| `-o` | 输出目录 | 末尾 `/` 或 `\` 会自动补全；**目录必须已存在**，否则只打印 `failed to open file` 而不会自建 |
 | `-g` | 后端 | 未知值**静默回落**到 `cpp` |
+| `-v` / `--version` | 打印版本后退出 | 唯一的长选项；在参数校验与编译**之前**短路，不需要 `-i` |
 
-程序没有 `--help`，也没有版本号输出；`rpc --help` 会静默退出并返回 0。
+**实测的退出码与输出**（2026-09-17）：
+
+| 调用 | 退出码 | 输出 |
+|---|---|---|
+| `rpc --version` | 0 | `rpc 1.0.43-a0a058e` |
+| `rpc -v` | 0 | 同上 |
+| `rpc --version -i /nonexistent.rpc` | 0 | 同上（证明短路在读文件之前） |
+| `rpc` | 1 | `failed to open file "".` |
+| `rpc --help` / `-h` | 1 | `failed to open file "".` —— **没有 `--help`**，未知选项被丢弃，于是走到空路径 |
+
+> **更正：无参数调用曾经是段错误，且「`--help` 静默退出 0」的说法不成立。**
+>
+> 2026-09-17 之前，`rpc`（无参数）与 `rpc --help` 都是 **exit 139（SIGSEGV）**，
+> 而非静默成功。根因是 `Main.cpp` 把 `args.GetCString()` 的 `NULL` 直接赋给
+> `std::string`（`generator_` / `inputFileName_` / `outDir`），未定义行为。
+> 早先记录的「静默退出并返回 0」是**测量方式错误**造成的：命令写在管道里时
+> `$?` 取的是管道末端（如 `head`）的退出码，不是 `rpc` 的。
+> 现已加 NULL 守卫，无参数时走到 `fopen("")` 失败并正常返回 1。
+>
+> 教训：**测退出码不要经过管道**，或显式用 `PIPESTATUS`。
 
 > **产物命名**（实测）
 >
@@ -116,6 +137,43 @@ ctest --test-dir build --output-on-failure -L rpc
 ```
 
 测试全部挂在同一个 `rpc` label 下，因此 `-L rpc` 等价于跑全量。依赖 .NET 的跨语言用例在找不到 `dotnet` 时会**跳过而非失败**。
+
+### 版本与发行
+
+每次 push 到 `main` 自动产出 Linux / Windows / macOS 三份二进制，配置见
+[.github/workflows/release.yml](../.github/workflows/release.yml)。
+
+**版本号构成**（`scripts/version.sh`，脚本与 CI 共用同一份逻辑）：
+
+| HEAD 的位置 | 版本号 |
+|---|---|
+| 正好在 `v*` tag 上 | 该 tag 名，例如 `v1.2.0` |
+| 其他 | `1.0.<提交数>-<短sha>`，例如 `1.0.43-a0a058e` |
+| 取不到 git 元数据 | `1.0.0-unknown` |
+| 工作区有未提交改动 | 追加 `-dirty` |
+
+它被编译进二进制，经 `--version` 读出，**不参与线格式**——版本差异不影响任何字节。
+
+**三个必须知道的约束：**
+
+1. **`.dockerignore` 排除了 `.git/`。** 容器内推不出提交号，版本必须经
+   `--build-arg RPC_VERSION_STRING=... RPC_BUILD_COMMIT=...` 注入。
+   漏传**不报错**，产物安静地变成 `1.0.0-unknown`。
+2. **`git describe` 必须带 `--match 'v[0-9]*'`。** 滚动 `latest` tag 永远指向
+   main 的最新提交，不加过滤就会**每次都匹配到字面量 `latest`**，版本号变成 `rpc latest`。
+3. **`checkout` 必须 `fetch-depth: 0`。** 浅克隆下 `git rev-list --count HEAD` 恒为 1，
+   版本号静默变成 `1.0.1-<sha>`——错得完全合理。`scripts/version.sh` 因此会主动检测
+   浅克隆并**拒绝输出**，把静默错误变成显式失败。
+
+**发布形态**：每次提交一份 workflow artifact（`rpc-<版本>`，保留 90 天），
+外加一个名为 `latest` 的滚动预发布，其 tag 每次被强推指向最新提交
+（`gh release upload` **不会**移动 tag，所以流程是先 `git tag -f` + push、再上传）。
+强推 tag 对执行 `git fetch --tags` 的人是意外行为，README 已说明。
+
+> **可复现性缺口（未修）**：`rapidjson` 经 FetchContent 拉取且 `GIT_TAG master`，
+> 上游一移动，**同一提交在不同时间构建会得到不同二进制**。发行版本若要可复现，
+> 需把它钉到具体 commit。版本串本身不含时间戳（未使用 `__DATE__` / `__TIME__`），
+> 这一侧是可复现的。
 
 ---
 
@@ -679,7 +737,7 @@ Python 输出，`y_ = 3` —— 同样是 12 字节，掩码差一位：
 | `rpc_serialization_tests` | 内存往返 + C++↔C# 文件交换 | 是（可跳过） |
 | `rpc_full_schema_tests` | 全类型 schema 往返 | 否 |
 | `rpc_full_crosslang_tests` | 跨语言（含 enum / 数组） | 是（可跳过） |
-| `rpc_compiler_tests` | 调用编译器并检查产物文本；含 `Edge.rpc` 的代码注入与多字节掩码 | 否 |
+| `rpc_compiler_tests` | 调用编译器并检查产物文本；含 `Edge.rpc` 的代码注入与多字节掩码，以及 `Compiler.Version*` 三个版本用例 | 否 |
 | `rpc_compiler_negative_tests` | **编译器负例**：坏 schema 必须非零退出；`enum : 类型` 的两种失效形态 | 否 |
 | `rpc_import_tests` | `#import`：定义摊平、无悬空引用、缺失导入致命 | 否 |
 | `rpc_runtime_edge_tests` | `skip` 边界、版本兼容读路径、`dynSize`/整数/浮点字节 golden、MemWriter 溢出 | 否 |
@@ -755,6 +813,24 @@ C++ 与 C# 的互操作通过**临时二进制文件交换**验证，而不是�
 Python 与 Go 的两条外部工具链同理：工具链缺失时用例仍然注册，只是报告为
 `Skipped`（CMake 侧用 `SKIP_REGULAR_EXPRESSION`）。这一条曾经很要命 ——
 `PythonWireFormatGolden` 在容器里根本不注册，`ctest` 却显示 100% 通过。
+
+### CI 门禁：把「100% passed」变成可判定的结论
+
+`scripts/assert-test-report.sh` 解析 ctest 输出，强制三件事：汇总行存在且无失败用例、
+**用例总数等于期望值**（当前 176）、**没有 `***Skipped`**。前两条各自对应一个真实踩过的坑：
+解释器缺失会让用例根本不注册（总数变小），工具链缺失会让用例报 Skipped（总数不变但没跑）。
+CI 的 `test` job 用它当发布门禁，不过就不产出任何二进制。
+
+**它抓不到的情况（如实记录）**：`RPC_HAVE_DOTNET=0` 时，跨语言用例内部走 `GTEST_SKIP()`，
+进程退出码仍是 0，ctest 记为 Passed，总数也不变。因此
+**容器里 dotnet 缺失时，这个脚本会报 OK 而 C# 链路一行都没跑**。
+要覆盖它得另找依据 —— 在容器内确认 `dotnet` 可用，或改用 `ctest -V` 后扫描 `[  SKIPPED ]`。
+当前未做。
+
+> 顺带一提，写这个脚本时踩到过 `sed` 的可移植性问题：GNU sed 接受 BRE 里的 `\+`，
+> BSD sed（macOS）不接受，于是同一行在 Linux 上正确、在 macOS 上**静默匹配不到**。
+> 现已改用 bash 内建 `[[ =~ ]]`。这类「换个平台就安静地给出不同答案」的写法在本项目里反复出现，
+> 值得一律避开。
 
 > **Go 与 Python 的接入方式**
 >
@@ -919,4 +995,9 @@ Go 测试套件恢复可编译、`dynSize`/整数/浮点/JSON 的字节 golden�
 四端共享黄金向量；工具链缺失时用例改为注册后跳过，Docker 的 tester 阶段补齐 python3 与 Go。
 测试用例从 126 个（124 通过 / 2 失败）增至 **173 个全部通过**（本机与 Docker 一致，无 Skipped）。
 所有标注 **实测** 的结论均在重新构建编译器后复现，原始字节输出已列在对应段落中。
-补齐 C#/Go 的 service 测试后，又在 service 路径上暴露出四个 Go 缺陷（见 §12）。*
+补齐 C#/Go 的 service 测试后，又在 service 路径上暴露出四个 Go 缺陷（见 §12）。
+再之后加入三个 `Compiler.Version*` 用例，总数为 **176**；并补上按提交发行与 CI 门禁（见 §2 版本与发行）。
+
+**本次（发行机制）修正了一条既有错误结论**：§2 原先记载「程序没有版本号输出，
+`rpc --help` 静默退出并返回 0」。实测为**段错误（exit 139）**，原因是 `NULL` 赋给
+`std::string`；「返回 0」是测量时把命令放进管道、误取了管道末端的退出码所致。*
