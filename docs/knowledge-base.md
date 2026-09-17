@@ -1,0 +1,849 @@
+# rpc 编译器与线格式
+
+从 `.rpc` 模式文件出发的代码生成器与二进制协议的完整参考：四种目标语言、一条线格式，以及所有在实测中被确认会出问题的地方。
+
+| | |
+|---|---|
+| 仓库 | `PHXStudio/rpc` |
+| 分支 | `main` |
+| HEAD | `923d720` |
+| 后端 | `cpp` · `cs` · `py` · `go` |
+| 编译器 | ~5.0k 行 |
+| 运行时 | ~3.6k 行 |
+
+> **关于可信度**
+>
+> 本文每条技术结论都标注了来源：**实测** 表示在本机重新构建编译器、生成代码并运行后得到的可复现结果；**源码** 表示来自对源码的直接阅读。实测所得均给出了原始字节输出，可自行复现。
+>
+> 分析基于 `main` 分支的 `923d720`。仓库自带的 `build/` 中的二进制是**过期的**，所有实测前已重新构建。
+
+## 目录
+
+1. [项目概览](#1-项目概览)
+2. [快速开始](#2-快速开始)
+3. [.rpc 语言参考](#3-rpc-语言参考)
+4. [编译器架构](#4-编译器架构)
+5. [线格式规格](#5-线格式规格)
+6. [FieldMask 与版本兼容](#6-fieldmask-与版本兼容)
+7. [类型映射矩阵](#7-类型映射矩阵)
+8. [各后端产物](#8-各后端产物)
+9. [运行时 API](#9-运行时-api)
+10. [跨语言兼容性](#10-跨语言兼容性)
+11. [测试与构建](#11-测试与构建)
+12. [已知问题清单](#12-已知问题清单)
+13. [仓库地图与分支](#13-仓库地图与分支)
+
+---
+
+## 1. 项目概览
+
+一个 schema 驱动的二进制序列化工具链：单一 IDL，四个代码生成后端，四份手写运行时。
+
+`rpc` 是一个命令行编译器。它读入以 `.rpc` 为扩展名的模式文件，为其中定义的 **struct / enum / service** 生成目标语言代码，并配套提供该语言的二进制读写运行时。生成代码与运行时共同实现一套自定义的二进制线格式。
+
+```
+ schema.rpc          rpc                     ┌─ C++     .h + .cpp + Methods.h
+   IDL 源文件  ──→  flex + bison 编译器  ──→  ├─ C#      .cs
+                     │                       ├─ Python  .py
+                     │                       └─ Go      .go
+                     └── + runtime（4 语言读写实现）
+```
+
+### 这套协议的核心特征
+
+- **无字段标签**。线格式里没有 protobuf 那样的 per-field tag、wire type、varint 或 zigzag。字段身份完全由收发双方的**声明顺序**保证。
+- **定长小端整数**，唯一变长编码是长度前缀 `dynSize`。
+- **FieldMask 位图**前置在每个结构体之前，负责表达"字段是否存在"，这是唯一的可选性机制，也是唯一的版本兼容手段。
+- **零值即缺省**。没有 null，没有 presence 语义 —— `0`、`false`、空串、空数组都会被视为"未设置"而不占字节，与 protobuf proto3 的取舍一致。
+
+运行时不是编译产物，而是四份独立手写的源码树（`runtime/cpp`、`runtime/cs`、`runtime/go`、`runtime/py`）。生成代码只调用这些运行时的公开 API，因此**线格式的一致性靠四份实现之间的约定维持**，而不是靠共享代码。这正是本文 §10、§12 里多数问题的根源。
+
+---
+
+## 2. 快速开始
+
+构建、调用与验证的最短路径，含几个会让第一次使用失败的坑。
+
+### 依赖与构建
+
+```bash
+# 依赖：CMake ≥ 3.16、C++11 编译器、bison、flex（rapidjson 由 FetchContent 自动拉取）
+cmake -S . -B build
+cmake --build build
+# 产物：build/compiler/rpc
+```
+
+### 命令行
+
+```
+rpc -i <输入.rpc> -o <输出目录/> -g <cpp|cs|py|go>
+```
+
+| 选项 | 含义 | 备注 |
+|---|---|---|
+| `-i` | 模式文件路径 | 无默认值，缺失时无友好报错 |
+| `-o` | 输出目录 | 末尾 `/` 或 `\` 会自动补全 |
+| `-g` | 后端 | 未知值**静默回落**到 `cpp` |
+
+程序没有 `--help`，也没有版本号输出；`rpc --help` 会静默退出并返回 0。
+
+> **产物命名**（实测）
+>
+> 输出文件名取自 **schema 文件的主文件名**，而不是其中定义的结构体名。`CrossLangTest.rpc` 始终生成 `CrossLangTest.cpp` / `.h` / `.cs` / `.go` / `.py`，无论里面定义了多少个 struct。
+
+### 端到端示例
+
+```bash
+mkdir -p out_cpp
+./build/compiler/rpc -i tests/schema/FullTest.rpc -o out_cpp/ -g cpp
+# → out_cpp/FullTest.h, out_cpp/FullTest.cpp, out_cpp/ServiceBaseMethods.h, ...
+```
+
+C++ 侧编译时需要三个 include 路径：生成目录、`runtime/cpp`、rapidjson 的 `include`。
+
+```bash
+g++ -std=c++11 -I out_cpp -I runtime/cpp -I _deps/rapidjson-src/include \
+    your_code.cpp out_cpp/FullTest.cpp -o your_app
+```
+
+### 运行测试
+
+```bash
+cmake -S . -B build -DBUILD_TESTING=ON   # 必须显式传入，见 §12
+cmake --build build
+ctest --test-dir build --output-on-failure -L rpc
+```
+
+测试全部挂在同一个 `rpc` label 下，因此 `-L rpc` 等价于跑全量。依赖 .NET 的跨语言用例在找不到 `dotnet` 时会**跳过而非失败**。
+
+---
+
+## 3. .rpc 语言参考
+
+一套刻意保持极小的 IDL：三种顶层定义、一个类型系统、一个修饰符。
+
+### 顶层定义
+
+模式文件由 `enum`、`struct`、`service` 三种定义组成，顺序无关（但引用必须先定义）。
+
+```c
+/* 枚举：成员自动编号 0..n-1，不支持显式赋值 */
+enum EnumName
+{
+	EN1,
+	EN2,
+	EN3,
+};
+
+/* 结构体：可继承，可带标记 */
+struct StructBase
+{
+	int32	int32_;
+	string	string_;
+	array<int32>	int32Array_;
+};
+
+struct DerivedStruct : StructBase
+{
+	int32 aaa_;
+};
+
+/* 服务：方法即一次 RPC 调用，无返回值声明 */
+service ServiceBase
+{
+	method1(string[32] username, string[32] password);
+	method2(StructBase s);
+};
+
+service DerivedService : ServiceBase
+{
+	method9(DerivedStruct d);
+	method10();          // 允许无参方法
+};
+```
+
+### 类型系统
+
+| 写法 | 含义 | 备注 |
+|---|---|---|
+| `int64` `uint64` `double` `float` | 64 位整数与浮点 | 全部为定长小端编码 |
+| `int32` `uint32` `int16` `uint16` | 32 / 16 位整数 | 同上 |
+| `int8` `uint8` `bool` | 8 位整数与布尔 | 同上 |
+| `string` | 动态字符串 | `dynSize` 长度前缀 |
+| `string[N]` | 带读取上界的字符串 | **不改变编码**，仅在读取时校验上限 |
+| `array<T>` | 动态数组 | `dynSize` + 顺序元素 |
+| `array[N]<T>` | 带读取上界的数组 | 同样不改变编码 |
+| `bytes` / `bytes[N]` | 字节串 | 语法层完全等价于 `array<uint8>` |
+| 标识符 | enum 或 struct 类型 | 查表决定是枚举还是用户类型；用 service 作类型会报错 |
+
+### 修饰符：`(skipcomp)`
+
+struct 唯一支持的标记，写在名字与父类之后、左花括号之前。它的名字极具误导性 —— 见 §6，`skipcomp` 的实际语义是** "跳过与默认值比较"**，即**所有字段无条件写出**。任何其他标记都会报 `invalid struct flag`。
+
+```c
+struct StructType (skipcomp)
+{
+	string aaa_;
+	int32 bbb_;
+};
+```
+
+### 注释
+
+```c
+// 单行注释
+/* 多行注释 */
+```
+
+`#< ... #>` 是文件级 C++ 代码片段，原样插入生成的头文件，仅在根文件生效；`#{ ... #}` 是 struct 级 C++ 片段，插入到最近解析的结构体声明中。这两个转义**只对 C++ 后端有效**。
+
+### `#import` 机制
+
+导入在词法层完成：解析器维护一个文件栈，遇到 `#import` 就切换输入缓冲，`<<EOF>>` 时恢复。去重基于已导入文件集合，搜索路径以**主 schema 所在目录**为首选。
+
+> **硬退出**（源码）
+>
+> 被导入文件找不到时，词法器直接 `exit(1)`，而不是向上报错。这意味着把编译器当作库使用时，一个坏路径会**直接终止宿主进程**。
+
+所有导入文件中的定义会被**摊平**进同一份输出，以根文件的主文件名命名 —— 导入不会产生独立的头文件。
+
+### 语言刻意不提供的东西
+
+| 没有的语法 | 已有的语义检查 |
+|---|---|
+| 字段 ID / 序号（由声明顺序隐式决定） | 重复定义名 |
+| `optional` / `required` / `repeated` | 重复字段名 / 重复参数名 |
+| 字段默认值 | 字段名与已有定义冲突 |
+| package / namespace 声明 | 非法父类型（未定义、自继承、用作类型的 service） |
+| 常量、类型别名、前向引用 | 非法的 struct 标记 |
+
+---
+
+## 4. 编译器架构
+
+经典的 flex + bison 前端，加上四个结构上高度雷同、彼此不共享代码的后端。
+
+```
+ rpc.l          →   rpc.y          →   Compiler        →   Generator
+ flex 词法 222 行   bison 语法 439 行   单例 · 持有 AST     按 -g 选择
+```
+
+### AST
+
+所有定义都以 `Definition` 为基类（`Definition.h`），向下分为 `Struct`、`Enum`、`Service`，字段由 `Field` 表示，结构体与方法的公共部分抽象为 `FieldContainer`。继承关系直接存在 `super_` 指针里。
+
+解析过程中，编译器用 `Compiler` 单例上的 `curStruct_` / `curService_` / `curField_` / `curMethod_` 累积当前状态，在归约到完整定义时转成堆对象存入 `definitions_`。字段 ID 由 `FieldContainer` 在生成阶段按"父类字段数 + 自身序号"计算。
+
+### 后端接口
+
+```cpp
+class CodeGenerator
+{
+public:
+	virtual void generate() = 0;
+};
+```
+
+只有一个纯虚函数，没有参数、没有返回值。四个后端各自从 `Compiler::inst()` 单例取所需的一切。
+
+真正的生成逻辑是各 `.cpp` 里的 `static` 自由函数（`generateStruct`、`generateEnum`、`generateStub`、`generateProxy`…）。四个后端之间**没有任何共享头或公共基类** —— 同名函数在四个文件里各写一遍，是彻底的复制-分叉结构。这是理解"为什么某个后端会漏掉某个特性"的关键。
+
+### 代码输出：CodeFile
+
+`CodeFile` 极薄：维护一个制表符缩进深度，提供 `printf` 风格的 `output()`，并**直接写入 `FILE*`**，没有缓冲。因此生成过程中无法对已写内容做后处理 —— 这也是 Go 输出没有经过 `gofmt`、Python 输出没有经过格式化的原因。
+
+### 编译主流程
+
+```
+main()                       Main.cpp
+  └─ Args 解析 -i / -o / -g
+  └─ Compiler::inst().compile()          Compiler.cpp
+       ├─ yyparse()                       // 词法+语法，填充 definitions_
+       ├─ 按 generator_ 选择后端对象
+       └─ gen->generate()                 // try/catch(const char*)
+```
+
+---
+
+## 5. 线格式规格
+
+整个项目的契约核心。以下全部为实测确认的字节级行为。
+
+### 整体布局
+
+```
+结构体（每个 FieldContainer 各一段，逐层递归）：
+[ fmLen : uint8 ][ FieldMask : fmLen 字节 ][ 字段数据 … ]
+
+RPC 调用：
+[ methodId : uint16 ][ 参数字段容器段 … ]   // 参数区不带 FieldMask
+```
+
+> **关键区分**
+>
+> `fmLen` 是**裸 uint8**，不是 `dynSize`。这决定了单个结构体最多表达 255 字节掩码，即约 2040 个字段。
+
+### 整数：定长、小端、补码
+
+没有任何变长整数编码。各语言实现方式不同但语义一致：C++ 直接 `memcpy` 宿主内存，C# 用 `BitConverter`，Go 显式 `binary.LittleEndian`，Python 用 `struct.pack('<i')`。
+
+```
+int32 值 0x12345678
+
+  78 56 34 12
+  └──┬──┘
+   4 字节，小端序，低字节在前
+```
+
+> **宿主端序依赖**（源码）
+>
+> C++ 与 C# 的实现直接使用宿主内存布局，只在**小端机器上正确**。`Config.h.in` 里有 `RPC_BIG_ENDIAN` 宏，但没有任何源文件 include 它 —— 大端平台会静默产生错误字节流。
+
+### `dynSize`：唯一的变长编码
+
+不是 varint，也不是 LEB128。规则：长度值以**大端**写出 1–4 字节；首字节的高 2 位记录**后续还有几字节**，低 6 位是长度的高 6 位。
+
+| 取值范围 | 总字节 | 编码 |
+|---|---|---|
+| ≤ `0x3F` | 1 | `0nnnnnnn` |
+| ≤ `0x3FFF` | 2 | `01nnnnnn nnnnnnnn` |
+| ≤ `0x3FFFFF` | 3 | `10nnnnnn …` |
+| ≤ `0x3FFFFFFF` | 4 | `11nnnnnn …` |
+
+**实测：C++ 运行时与 Go 运行时对同一批值的输出，逐字节一致**
+
+```
+0x00000000 → 00
+0x0000003F → 3F
+0x00000040 → 40 40          ← 进位到 2 字节：高 2 位 01 + 高 6 位 0
+0x00003FFF → 7F FF
+0x00004000 → 80 40 00       ← 进位到 3 字节
+0x003FFFFF → BF FF FF
+0x00400000 → C0 40 00 00
+0x3FFFFFFF → FF FF FF FF
+```
+
+超出 `0x3FFFFFFF` 时，C++ / C# / Python 都会**静默截断或丢弃数据**，只有 Go 返回错误。
+
+### 字符串、布尔与枚举
+
+| 类型 | 编码 | 说明 |
+|---|---|---|
+| `string` | `dynSize(len)` + 原始字节 | 无 NUL 终止符；读取侧强制 `maxlen` 上限 |
+| `bool` | 1 字节，写侧归一化为 0/1 | 读侧接受任意非零为 true |
+| `enum` | 1 字节 uint8 序号 | **枚举成员上限 256**；越界值导致整包解析失败而非忽略 |
+| `float` / `double` | 4 / 8 字节 IEEE-754 小端 | — |
+| 数组 | `dynSize(count)` + 元素顺序排布 | 元素无独立标签 |
+
+字符编码不是协议的一部分。只有 **C# 运行时显式做 UTF-8**（`Encoding.UTF8`），C++ / Go / Python 按原始字节序列处理，编码由调用方负责。
+
+### 继承的布局：每层一个掩码段
+
+基类与派生类**不共享**一个 FieldMask。序列化时先递归调用基类，因此线格式是 `[基类段][派生段]`，继承链每增加一层就多一个 `[fmLen][fm]` 块。
+
+```cpp
+void Derived::serialize(ProtocolWriter* s) const
+{
+	Base::serialize(s);   // ← 先写基类那一整段
+	// ← 再写自己这一段
+}
+```
+
+### 消息边界
+
+协议自身**不含长度或结束标记**。结构体解析的终止条件是"掩码中所有已知位处理完毕"，真实的消息边界必须由传输层帧来界定。这也解释了为什么 FieldMask 是必需的 —— 无法用 EOF 判断结束。
+
+---
+
+## 6. FieldMask 与版本兼容
+
+唯一的可选性机制，也是唯一的演进手段 —— 但它的语义比名字看起来复杂得多。
+
+### 位图布局
+
+字段在结构体中的声明序号即位序号，采用 **MSB-first** 打包：位置 0 对应首字节的最高位。
+
+```cpp
+// C++ 参考语义
+void writeBit(bool b) {
+	if (b) masks_[pos_ >> 3] |= (128 >> (pos_ & 7));
+	pos_++;
+}
+```
+
+四份运行时实现逐位一致（Go 写作 `1 << (7 - pos%8)`，等价）。字节数为 `ceil(N/8)`。
+
+### 位的语义
+
+| 字段类型 | 位 = 1 的条件 | 位 = 0 时 |
+|---|---|---|
+| 数值 / 枚举 | `value != 0` | 不写字节，读侧取默认值 |
+| `bool` | 值本身 | 不写字节，读侧 false |
+| `string` | `length > 0` | 不写字节，读侧空串 |
+| 数组 | `size > 0` | 不写字节，读侧空数组 |
+| 嵌套 struct | **恒为 1** | 永不发生，总是递归写整块 |
+
+因为位由"值是否等于默认值"决定，**"零值"与"未设置"在协议层不可区分**。
+
+### 版本兼容的三步读法
+
+读取侧的逻辑在四个后端中一致：
+
+```
+1. 读 fmLen（1 字节）
+2. readFmLen = min(actualFmLen, 我自己需要的字节数)
+3. 读 readFmLen 字节掩码
+   ├─ actualFmLen > readFmLen  →  skip 掉多余字节       // 旧版本读新数据
+   └─ actualFmLen < readFmLen  →  剩余位补 0            // 新版本读旧数据
+```
+
+由此得出的兼容性边界：**只能通过在结构体末尾追加字段来演进**。删除字段、改变字段顺序、改变字段类型都会让整个流无法解析 —— 因为没有 per-field tag 可用来对齐。
+
+### `(skipcomp)` 的真实语义
+
+> **名实不符**（实测）
+>
+> `skipcomp` 是"**skip comparison**" —— 跳过与默认值的比较。声明了它的结构体，**所有字段都会被无条件写出**，读取侧也无条件读入，完全不做掩码判断。名字里的 "skip" 指的是跳过*比较*，而不是跳过*字段*。
+
+但它仍然会写 `fmLen` 与掩码字节（掩码位的值照常按"是否非默认"计算），只是收发双方都不拿它做判断。对同一份 schema，这产生两种**互不兼容**的字节流：
+
+**实测：schema 声明了 `(skipcomp)`，字段 `i32_=0`、`s_="hi"`、`b_=[1,2]`**
+
+C++ 后端输出 —— 12 字节：
+
+```
+01 60 00 00 00 00 02 68 69 02 01 02
+
+01 60        fmLen=1，掩码 0x60 → bit1、bit2 置位，bit0（i32_）为 0
+00 00 00 00  掩码说 i32_ 不存在，但 C++ 仍然写了它
+02 68 69     字符串 "hi"
+02 01 02     数组 [1, 2]
+```
+
+Python 后端输出 —— 8 字节：
+
+```
+01 60 02 68 69 02 01 02
+
+01 60        同样的 fmLen 与掩码
+02 68 69     字符串 "hi" —— i32_ 被正确省略
+02 01 02     数组 [1, 2]
+```
+
+用 C++ 读 Python 的 8 字节流，实测结果为 `deserialize() = false`，且已读出的 `i32_` 是垃圾值 `40462338` —— 它把字符串的长度字节当成了整数。反向同样失败。
+
+> **反过来说：不带 `(skipcomp)` 时一切正常**（实测）
+>
+> 同一份 schema 去掉 `(skipcomp)`，字段取 `a_=5`、`b_="hi"`，C++ 与 Python 输出**逐字节完全相同**：
+>
+> ```
+> 01 C0 05 00 00 00 02 68 69
+>
+> 01           fmLen
+> C0           两个字段都置位
+> 05 00 00 00  int32 小端
+> 02 68 69     "hi"
+> ```
+>
+> **默认模式才是跨语言可用的模式。**
+
+更麻烦的是：**Go 与 Python 后端完全忽略 `(skipcomp)`** —— 加与不加这个标记，它们的输出一模一样（仅包名随文件名变化）。只有 C++ 与 C# 生成器实现了这个语义。因此 `(skipcomp)` 实际上是"让 C++ 和 C# 变得与 Go / Python 不兼容"的开关。
+
+---
+
+## 7. 类型映射矩阵
+
+| IDL | C++ | C# | Python | Go |
+|---|---|---|---|---|
+| `int64` | `int64_t` | `long` | `int` | `int64` |
+| `uint64` | `uint64_t` | `ulong` | `int` | `uint64` |
+| `double` | `double` | `double` | `float` | `float64` |
+| `float` | `float` | `float` | `float` | `float32` |
+| `int32` | `int32_t` | `int` | `int` | `int32` |
+| `uint32` | `uint32_t` | `uint` | `int` | `uint32` |
+| `int16` | `int16_t` | `short` | `int` | `int16` |
+| `uint16` | `uint16_t` | `ushort` | `int` | `uint16` |
+| `int8` | `int8_t` | `sbyte` | `int` | `int8` |
+| `uint8` | `uint8_t` | `byte` | `int` | `uint8` |
+| `bool` | `bool` | `bool` | `bool` | `bool` |
+| `string` | `std::string` | `string` | `str` | `string` |
+| `array<T>` | `std::vector<T>` | `T[]` | `list` | `[]T` |
+| `bytes` | `std::vector<uint8_t>` | `byte[]` | `list` | `[]uint8` |
+| `enum X` | `X`（真枚举） | `X` | 普通 `int` | `X`（int32 命名类型） |
+| `struct X` | `X` | `X` | `X` | `X` |
+
+Python 完全不区分整数宽度（一律 `int`），宽度信息只体现在它选择的 `*Writer` 函数上。这本身没有问题 —— 只要序列化时选对函数，而 Python 确实选对了。
+
+---
+
+## 8. 各后端产物
+
+同一份 schema，四种语言的输出形态差异很大。
+
+| | C++ | C# | Python | Go |
+|---|---|---|---|---|
+| 输出文件 | `stem.h`<br>`stem.cpp`<br>`ServiceMethods.h` | `stem.cs` | `stem.py` | `stem.go` |
+| 命名空间 | 无（全局） | 无（全局） | 模块名 = 文件名 | `package` = 小写 stem |
+| 运行时引用 | `#include "ProtocolWriter.h"` | `bin.` 前缀 **断裂** | `from rpc.writer import *` | `github.com/rpc/runtime` |
+| 继承实现 | `struct X : public Base` | `class X : Base` + `new` 隐藏 | `class X(Base)` | 匿名内嵌基类 |
+| 字段 ID | struct 内 `enum { FID_x, FIDMAX }` | 嵌套 `public enum FID` | 无 | 扁平常量 `FIDXxxYyy` |
+| 逐字段 API | 无 | 有 `serializeField` / `deserializeField` | 无 | 无 |
+| 构造函数 | 仅当存在标量默认值时生成 | 无（字段初始化器） | 恒生成 `__init__` | 恒生成 `NewX()` |
+| JSON | 完整 `toJson` / `loadJson` | 无 | 无 | 仅 struct tag，无方法 |
+| 错误模型 | `bool` 返回 | `bool` 返回 | 异常 + 位置式返回 | `error` 返回 |
+
+### Service 三件套
+
+每个 service 在各语言中生成 Stub（发送侧）、Proxy（接收侧）与分发器：
+
+```cpp
+// C++
+class ServiceBaseStub  { void method1(...);  protected: virtual ProtocolWriter* methodBegin() = 0; };
+class ServiceBaseProxy { virtual bool method1(...) = 0;  bool dispatch(ProtocolReader*); };
+```
+
+```csharp
+// C#
+public abstract class ServiceBaseStub { ... }
+public interface ServiceBaseProxy { ... }
+public static class ServiceBaseDispatcher { public static bool dispatch(...); }
+```
+
+```go
+// Go
+type ServiceBaseStub struct { ... }
+type ServiceBaseProxy interface { ... }
+type ServiceBaseDispatcher struct{}  // 方法名小写开头，包外不可见
+```
+
+方法 ID 按**基类优先**的顺序分配，四个后端一致。方法载荷的编码是 `[uint16 methodId][参数]`，且参数区**不带 FieldMask** —— 这是它与结构体编码的唯一结构差异。
+
+### C++ 的两个扩展点
+
+C++ 后端是唯一支持代码注入的后端：`#< ... #>` 把片段插入文件级，`#{ ... #}` 插入结构体级。此外它还会为每个 service 额外生成一份 `<Service>Methods.h`，内含非纯虚的方法声明，便于把 handler 实现分散到多个编译单元。
+
+---
+
+## 9. 运行时 API
+
+四份手写运行时，四套不同的 API 形态，共享一条线格式。
+
+### C++ · 虚基类 + 重载
+
+- `ProtocolWriter` / `ProtocolReader` 抽象基类
+- `writeType(T)` 重载覆盖全部标量
+- `readType(T&)` 全部返回 `bool`
+- `writeDynSize` / `readDynSize`
+- `skip(size_t)` —— 版本兼容用
+- 实现：`ProtocolMemWriter`（固定缓冲）、`ProtocolBytesWriter`（可增长 vector）
+
+### C# · 接口 + 静态类
+
+- `IWriter` / `IReader` 接口
+- `ProtocolWriter` / `ProtocolReader` 静态类，首参为接口
+- `readType(r, out T, maxlen)` 形态
+- `Skip(uint)` 在 `IReader` 上
+- 只有 `MemWriter`（内部 `List<byte>`，**可增长**）与 `MemReader`
+
+### Go · interface + 方法爆炸
+
+- `rpc.ProtocolWriter` / `rpc.ProtocolReader` 接口
+- 每个类型一个方法（Go 无重载）
+- 统一 `(T, error)` 返回
+- 具名 sentinel：`ErrArrayTooLong`、`ErrUnknownMethod`…
+- 附 `FieldMask`、`EnumInfo` 全局注册表
+
+### Python · 自由函数
+
+- 没有读写对象 —— 缓冲是 `list`，位置是整数
+- `int32Writer` / `stringReader` 一族函数
+- `write(wtr, isArray, buf, v, fm)` 调度器
+- `skipReader(b, p, n)`
+- 生成代码形如 `self.f, _p_ = read(int32Reader, _b_, _p_, 0, 0, _fm_)`
+
+### Mem* 与 Bytes* 的语义漂移
+
+> **同名不同义**（源码）
+>
+> 在 C++ 里 `ProtocolMemWriter` 写入**外部固定缓冲区**，容量不足时 `write()` 直接 `return` —— 因为是 `void`，**溢出会静默丢字节且无法感知**。而在 C# 与 Go 里，`MemWriter` 内部的缓冲**会增长**，实际扮演的是 C++ 里 `BytesWriter` 的角色。"Mem" 这个名字在两个语言族里含义相反，选型时极易误判。
+
+### EnumInfo
+
+运行时的枚举元数据表，承担三重职责：二进制用序号、JSON 用字符串名之间的转换；提供读取侧的取值范围校验（`valMax = items_.size()`）；以及 `ENUM(X)` 这类查询入口。C++ 用构造期回调填充，Go 用带 `sync.RWMutex` 的全局注册表。
+
+---
+
+## 10. 跨语言兼容性
+
+实测结果。这是使用本项目前最需要知道的一张表。
+
+兼容性有**两个彼此独立的维度**：掩码语义（是否写缺省字段）与字段编码宽度。把它们分开看，问题会清楚很多 —— 一个组合可能在某一维上完全一致，在另一维上必然错位。
+
+| 组合 | 掩码语义<br>（默认模式） | 掩码语义<br>（声明 skipcomp） | 含非 64 位整数 | 含嵌套 struct |
+|---|---|---|---|---|
+| **C++ ↔ C#** | 一致 | 一致 | 一致 | 一致 |
+| **C++ ↔ Python** | 一致 | **互不兼容** | 一致 | **掩码错位** |
+| **C++ ↔ Go** | **互不兼容** | **互不兼容** | **错位** | 未实测 |
+| **Python ↔ Go** | 一致 | 一致 | **错位** | 未实测 |
+
+读法：**C++ ↔ Go 在两维上都坏** —— Go 忽略 `skipcomp`，且整数宽度不同，所以无论 schema 怎么写都不兼容。**Python ↔ Go 只在掩码维度上一致**（两者都忽略 `skipcomp`），一旦 schema 里有整数就仍然错位。只有 **C++ ↔ C#** 这一对在两个维度上都对齐。
+
+> **测试覆盖说明**
+>
+> 表中标"未实测"的格子没有做过实验；其余格子的结论来自 §6 与 §10 中列出的原始字节输出。C# 与 C++ 的实现是同构的（同样的 skipcomp 分支、同样的按声明宽度写出），因此 C++ 一行的结论对 C# 同样适用，但这是**推断而非实测**。
+
+### 造成 Go 不兼容的原因：整数一律按 8 字节写出
+
+（实测）Go 生成器把**所有整数**（包括 `int8` / `int16` / `int32`）统一通过 `WriteInt64(int64(v))` 写出，读取时再强转回声明宽度。其余三个后端都按声明宽度写。同一份 schema、同样的字段值：
+
+schema：`struct Foo { int32 a_; string b_; }`，值 `a_=5`、`b_="hi"`
+
+C++ / Python 输出 —— 9 字节，两者完全相同：
+
+```
+01 C0 05 00 00 00 02 68 69
+      └─────┬────┘
+      int32 占 4 字节
+```
+
+Go 输出 —— 13 字节：
+
+```
+01 C0 05 00 00 00 00 00 00 00 02 68 69
+      └──────────┬──────────┘
+      int32 占 8 字节 —— 差异正好 4 字节
+```
+
+`01 C0` 的 fmLen 与掩码完全一致，字符串部分也一致；差异只出现在整数宽度上。
+
+后果是：**只要 schema 里出现任何非 64 位整数字段（这是常态），Go 与其余三方的字节流必然错位。** Go 侧的类型映射本身是正确的，问题只出在序列化宽度上。
+
+### Python 的嵌套 struct 掩码错位
+
+（实测）Python 后端为嵌套 struct 生成的 `XxxWriter(b, v, fm)` 函数体只有一句 `v.serialize(b)`，**既不设置自己的掩码位，也不推进掩码位置**。于是后续字段会占用本该属于嵌套 struct 的那一位，整个掩码**前移一位**。
+
+schema：`struct Outer { Inner in_; int32 y_; }`，值 `in_.x_=7`
+
+C++ 输出，`y_ = 3`：
+
+```
+01 C0 01 80 07 00 00 00 03 00 00 00
+   └┬┘
+   bit0（嵌套 struct，恒为 1）+ bit1（y_ ≠ 0）
+```
+
+Python 输出，`y_ = 3` —— 同样是 12 字节，掩码差一位：
+
+```
+01 80 01 80 07 00 00 00 03 00 00 00
+   └┬┘
+   嵌套 struct 没占位，y_ 的位前移到了 bit0
+```
+
+当 `y_` 取默认值 0 时后果最清晰：C++ 写出 `01 80 01 80 07 00 00 00`（8 字节，合法），Python 去读它会抛 `struct.error: unpack requires a buffer of 4 bytes` —— 因为错位的掩码让它去找一个 C++ 根本没写的 `y_`。
+
+---
+
+## 11. 测试与构建
+
+七个 GoogleTest 目标、一套文件交换式跨语言验证，以及若干未接线的资产。
+
+### 测试组织
+
+全部用例通过 `gtest_discover_tests` 注册，且只有**一个 label**：`rpc`。因此 `ctest -L rpc` 就是全量测试，没有更细的筛选维度。
+
+| 目标 | 覆盖内容 | 依赖 .NET |
+|---|---|---|
+| `rpc_serialization_tests` | 内存往返 + C++↔C# 文件交换 | 是（可跳过） |
+| `rpc_full_schema_tests` | 全类型 schema 往返 | 否 |
+| `rpc_full_crosslang_tests` | 跨语言（含 enum / 数组） | 是（可跳过） |
+| `rpc_compiler_tests` | 调用编译器并检查产物文本 | 否 |
+| `rpc_service_tests` | Stub / Proxy 与报文分发 | 否 |
+| `rpc_json_tests` | JSON 序列化与反序列化 | 否 |
+| `rpc_go_generator_tests` | Go 产物**文本断言**（不编译） | 否 |
+
+### 跨语言验证的工作方式
+
+C++ 与 C# 的互操作通过**临时二进制文件交换**验证，而不是链接在一起：
+
+- 构建期用 `add_custom_command` 对同一份 schema 同时生成 C++ 与 C#。
+- 构建期用 `dotnet build` 预编译一个独立的验证器可执行文件 —— 刻意**不用 `dotnet run`**，避免每次触发完整 MSBuild 评估。
+- 运行期 C++ 侧写临时 `.bin` 文件（用 PID 隔离并发），再通过 `dotnet exec` 启动验证器进程，以退出码判定结果。
+- 字符串与字节数组以**十六进制**传参，规避跨平台参数编码差异。
+
+找不到 `dotnet` 时，对应用例编译成 `GTEST_SKIP()`，**跳过而非失败**。
+
+> **Go 与 Python 没有接入 CTest**
+>
+> `runtime/go/` 下有一套相当完整的 Go 测试（约 40 个用例），但需要手动 `go test ./...`；CMake 侧的 "Go 测试" 只是用 C++ 写的**文本断言**，不编译生成的 Go 代码 —— 这正是 §12 里那些 Go 语法错误能长期存在的原因。Python 侧则完全没有测试：`tests/py/` 是空目录，只留下已删除用例的 pytest 缓存。
+
+### 依赖获取
+
+- **rapidjson** —— 根 `CMakeLists.txt` 通过 FetchContent 拉取，但 tag 写的是 `master` 而非固定版本，构建不完全可复现。
+- **GoogleTest** —— 先 `find_package`，找不到才 FetchContent 拉 `v1.14.0`。
+- **bison / flex** —— 强制 required，Windows 需自行安装 WinFlexBison。
+
+### Docker
+
+`Dockerfile` 是一个多阶段构建：Linux 构建、Windows 交叉编译（mingw-w64）、以及一个额外安装 .NET 6 用于跑测试的 tester 阶段。`scripts/` 下有 8 个对应的 sh / ps1 脚本。`docker build` 的上下文需要注意：`.dockerignore` 没有排除 `_deps/`，会把完整的依赖克隆打进上下文。
+
+---
+
+## 12. 已知问题清单
+
+按影响排序。每一条都经过验证，标注了验证方式。
+
+### 严重
+
+#### Go 后端把所有整数写成 8 字节
+
+`实测` · `compiler/GoGenerator.cpp:400`
+
+任何含非 64 位整数字段的 schema，Go 与 C++ / C# / Python **线格式不兼容**，字节流整体错位。详见 §10 的对照 dump。**这是当前最严重的互操作缺陷**，且现有 Go 测试只覆盖"Go 写 Go 读"的自洽往返，没有任何用例覆盖与 C++ 的整数互操作。
+
+#### Go 生成的代码无法编译
+
+`实测` · `compiler/GoGenerator.cpp`
+
+三处独立缺陷：
+
+1. 无条件 import `encoding/json` 与 `errors`，简单 schema 用不到它们 —— Go 将未使用导入视为编译错误；
+2. 枚举元数据的复合字面量缺少尾随逗号，报 `unexpected newline in composite literal`；
+3. service 方法签名多出一个右括号（`Password string,)` 后换行再接 `error`）。
+
+实测 `CrossLangTest.rpc` 与 `FullTest.rpc` 的产物**均无法通过 `go build`**。
+
+#### C# 生成代码引用了不存在的命名空间
+
+`实测` · `compiler/CSGenerator.cpp` — 32 处
+
+生成器输出 `bin.ProtocolWriter`、`bin.FieldMask` 等前缀，但 `runtime/cs/` 下的运行时已全部改为 `namespace rpc`，且生成文件里**没有 `using` 别名**（只有 `using System;`）。重命名提交声称已更新 CSGenerator，实际上只改了运行时。当前 C# 链路**无法编译**；`tests/cs/` 下的验证器同样仍是 `using bin;`。
+
+#### `(skipcomp)` 使 C++ / C# 与 Go / Python 互不兼容
+
+`实测` · `compiler/CppGenerator.cpp:340` · `compiler/CSGenerator.cpp:60`
+
+`skipcomp` 是"跳过与默认值比较"，即**无条件写出所有字段**；Go 与 Python 生成器**完全忽略该标记**，始终按掩码压缩。同一个标记让两派产生长度不同的字节流。仓库里两个跨语言 schema（`CrossLangTest.rpc`、`FullCrossLang.rpc`）恰好都声明了它 —— 它们只在 C++↔C# 之间成立。详见 §6。
+
+### 中等
+
+#### Python 嵌套 struct 的掩码位错位
+
+`实测` · `compiler/PYGenerator.cpp:145`
+
+为嵌套 struct 生成的 writer 忽略传入的 `fm` 参数，既不置位也不推进位置，导致后续字段掩码整体前移一位。C++ 读 Python 数据或反向都会失败。详见 §10 的字节对照。
+
+#### Go 测试套件无法编译
+
+`实测` · `runtime/go/fieldmask_test.go:131`
+
+`go test ./...` 直接报 `fm.Pos undefined`（字段实为小写 `pos`），整个包构建失败，**约 40 个用例一个都不会执行**。因此 Go 运行时长期处于无测试覆盖状态。
+
+#### Go 的 dynSize 测试期望值与实现不符
+
+`实测` · `runtime/go/writer_test.go:142` · `runtime/go/crosslang_test.go:111`
+
+测试期望 `0x40 → {0x40, 0x00}`，但实测 C++ 与 Go 两边的**实现**都输出 `0x40 0x40`（首字节需 OR 上 2 位长度标记）。实现是对的，**测试数据是错的** —— 因为上面的编译失败，这些断言从未真正跑过。
+
+#### Go 生成代码的 FieldMask 跳过被类型断言限死
+
+`源码` · `compiler/GoGenerator.cpp:850`
+
+版本兼容的 `Skip` 调用写作 `if reader, ok := reader.(*rpc.MemReader); ok` —— 只有内存读取器会执行跳过。换成流式 / socket 读取器时，**跳过被静默忽略**，后续所有字段偏移全错且不报错。C++ 与 C# 通过接口虚函数完成，没有这个限制。
+
+#### `BUILD_TESTING` 判定顺序错误，测试默认不配置
+
+`实测` · `CMakeLists.txt:43`
+
+`if(BUILD_TESTING)` 写在 `include(CTest)` **之前**，而该变量正是由 `include(CTest)` 定义的。不显式传 `-DBUILD_TESTING=ON`，整个 `tests/` 永远不会被配置。实测仓库自带的 `build/` 中 `ctest -N` 报告 `Total Tests: 0`，且缓存里没有该变量 —— 该构建树从未配置过测试。
+
+#### `#import` 的唯一测试已失效，该特性零覆盖
+
+`实测` · `tests/runtime/compiler_test.cpp:76,88`
+
+这两个用例仍指向 `bin/Import.rpc` 与 `bin/Example.rpc`，但 `bin/` 目录已在重命名提交中被删除。用例**必然失败**，而仓库中已无任何其他 `#import` 覆盖。README 也仍指向已删除的路径。
+
+### 轻微
+
+#### Python 运行时是 Python 2 风格
+
+`实测` · `runtime/py/bin/writer.py` · `runtime/py/bin/reader.py`
+
+生成的 `serialize()` 往同一个 list 里混装 `bytes` 与 `str`（`b.append('\001')` 追加的是 str），Python 3 下 `b''.join(b)` 直接抛 `TypeError`。读取侧的 `stringReader` / `enumReader` 用了**裸 `raise`**（不在 `except` 块内），实际抛出的是 `RuntimeError: No active exception to re-raise`，而不是预期的长度校验异常。代码本身可运行（实测手动归一化后往返正确），但需要调用方自行处理类型。
+
+#### Python 包名三处不一致
+
+`源码` · `compiler/PYGenerator.cpp:262` · `runtime/py/setup.py.in:3`
+
+生成代码 import `rpc.writer`，运行时目录却叫 `runtime/py/bin/`，而 `setup.py.in` 声明的包名仍是 `bin`。安装产物与生成代码对不上，需要手工改名或调整 `sys.path`。
+
+#### C++ 运行时用 `c_str()` 去 const 写入
+
+`源码` · `runtime/cpp/ProtocolReader.h:82`
+
+```cpp
+v.resize(len);
+return read((void*)v.c_str(), len);
+```
+
+通过 `c_str()` 拿到 const 指针后强制转换并写入，形式上属未定义行为。实测所有 C++ 用例均正常工作，因此这是**代码质量问题而非已观测到的故障**；正确写法是 `&v[0]` 或 `v.data()`。
+
+#### C++ MemWriter 溢出静默丢字节
+
+`源码` · `runtime/cpp/ProtocolMemWriter.h:17`
+
+```cpp
+if (space_ < wtptr_ + len) return;
+```
+
+`write()` 返回 `void`，缓冲区不足时既不报错也不返回状态，产生被截断的消息。对不可信输入是安全隐患。
+
+#### 仓库自带的编译器二进制是过期的
+
+`实测` · `build/compiler/rpc`
+
+`build/` 里的二进制构建于命名空间统一提交**之前**，生成的仍是旧 `arpc` / `github.com/arpc/runtime` 引用。重新构建时 17 个源文件全部重编，证实其陈旧。直接用它生成代码会得到与源码不符的结果。
+
+#### 未接线的遗留资产
+
+`源码` · `conn/` · `Config.h.in` · `runtime/py/setup.py.in`
+
+`conn/` 是一套依赖 **ACE 框架**的 TCP 连接 / 多路复用库，**不在任何构建中**，仓库里也没有 ACE 依赖，且缺少顶层 `conn/CMakeLists.txt`（只有 `conn/src/` 下的），即使想启用也无法 `add_subdirectory`。`Config.h` 生成后无任何源文件 include；`runtime/py/setup.py.in` 不被任何 CMake 处理。
+
+---
+
+## 13. 仓库地图与分支
+
+| 路径 | 职责 | 参与构建 |
+|---|---|---|
+| `compiler/` | 编译器：词法、语法、AST、四个后端 | 是 |
+| `runtime/cpp/` | C++ 运行时头文件（仅头文件） | 仅 include 路径 |
+| `runtime/cs/` | C# 运行时源码 | 由 csproj 引用 |
+| `runtime/go/` | Go 运行时包 `rpc` | 由 go.mod 引用 |
+| `runtime/py/bin/` | Python 运行时 | 否 |
+| `tests/` | GoogleTest 用例、示例 schema、.NET 验证器 | 需显式开启 |
+| `conn/` | ACE 连接库遗留 | 否（死代码） |
+| `scripts/` | Docker 构建脚本、CSV→schema 转换工具 | — |
+
+> **runtime 不是 CMake 目标**
+>
+> 根 `CMakeLists.txt` 里 `add_subdirectory(runtime)` 是**被注释掉的**。四个语言运行时都通过各自生态的方式被消费：C++ 靠 include 路径、C# 靠 csproj 的 `<Compile Include>`、Go 靠 module path、Python 靠手工路径。
+
+### 分支拓扑
+
+仓库有两条各自演进了很久的线，共同祖先是 2018 年的初始提交 `11df9de`，之后**再无合并**：
+
+| 分支 | 定位 | 特征 |
+|---|---|---|
+| `main` ← 当前 | 统一命名后的主线 | 四个后端（cpp/cs/py/go）、`rpc.l`/`rpc.y`、FieldMask 版本兼容、完整测试体系 |
+| `master` | 面向 Godot 的分支 | 含 `GodotCppGenerator` 与 `runtime/godot/`，但**没有 Go / Python 后端**，文件名仍是旧的 `bin.l`/`bin.y` |
+
+`master` 并不是 `main` 的旧版本，而是**另一条产品线** —— 它保留了 Godot 游戏引擎方向的生成后端。两者互不包含，切换分支会看到完全不同的编译器。远程指向 `github.com:PHXStudio/rpc.git`，标签 `v0.0.1` 打在 `main` 线的 Go 测试提交上。
+
+### 项目沿革
+
+初始提交（2018-07-11）时项目名为 **bintalk**，带有 ActionScript 与 Erlang 运行时；2026 年 3 月起经历了一轮现代化重写：改为 `rpc`、删除 AS3/Erlang 后端、加入 Go 后端与完整测试、引入 FieldMask 版本兼容，最后在 `923d720` 把散落的 `bin` / `arpc` 命名统一为 `rpc`。那次统一改了运行时却没改完生成器，是 §12 中若干问题的直接来源。
+
+---
+
+*本文基于 `main` 分支 `923d720`，分析于 2026-09-17。所有标注 **实测** 的结论均在重新构建编译器后复现，原始字节输出已列在对应段落中。*
