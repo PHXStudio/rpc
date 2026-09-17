@@ -170,6 +170,20 @@ ctest --test-dir build --output-on-failure -L rpc
 （`gh release upload` **不会**移动 tag，所以流程是先 `git tag -f` + push、再上传）。
 强推 tag 对执行 `git fetch --tags` 的人是意外行为，README 已说明。
 
+**首跑结论（2026-09-17，实测）**：五个 job 全部通过，三个约束逐条得到证实 ——
+macOS runner 的**系统 `bison` 2.3 / `flex` 足以构建**（无需 `brew install`），
+发布说明为 `1.0.47-9711ed3` 而非 `1.0.1-xxxxxxx`（`fetch-depth: 0` 生效）
+也非 `latest`（`--match` 生效）。
+
+发布产物另按**用户路径**验证过一遍，这一层最硬，因为它走的就是真实使用路径：
+`curl` 取 `rpc-macos-arm64` → 本机直接运行报出正确提交号 → SHA256 与 `SHA256SUMS` 一致
+→ 用它生成四端代码 → 与本地构建的产物 **diff 逐字节一致**。
+即发布出来的不只是版本号对，而是与本地构建等价的编译器。
+
+> **排查提示**：容器产物是 Linux ELF，**在 macOS 上直接执行会 `exec format error`**。
+> 要验证容器构建的二进制，须在容器内跑：
+> `docker run --rm -v "$PWD/dist:/d" rpc-linux /d/rpc --version`。
+
 > **可复现性缺口（未修）**：`rapidjson` 经 FetchContent 拉取且 `GIT_TAG master`，
 > 上游一移动，**同一提交在不同时间构建会得到不同二进制**。发行版本若要可复现，
 > 需把它钉到具体 commit。版本串本身不含时间戳（未使用 `__DATE__` / `__TIME__`），

@@ -217,15 +217,27 @@ scripts/docker-test.sh
 #    核对：总数 176、无 Skipped、三个新用例确实执行
 
 # 3. 容器内版本号不是 unknown（证明 build-arg 注入通了）
-scripts/docker-build.sh && ./dist/rpc --version
+scripts/docker-build.sh
+#    注意产物是 Linux ELF，**不能在 macOS 上直接跑**（exec format error）。
+#    必须在 Linux 容器内执行 —— 计划里原写成本机直接执行，是错的。
+docker run --rm -v "$PWD/dist:/d" rpc-linux /d/rpc --version
 
-# 4. CI 首次验证（workflow 无法本地跑）
-#    先在临时分支上把 on.push.branches 加上该分支，workflow_dispatch 触发，确认：
-#    - macOS runner 上 /usr/bin/bison 2.3 + /usr/bin/flex 可用（约束 2）
+# 4. CI 验证（workflow 无法本地跑）
+#    实测下来直接推 main 即可：test job 是门禁，它不过就什么都不会发布，
+#    所以坏的工作流最坏结果只是 main 上一个红叉，不会产出坏产物。
+#    （计划原写「先推临时分支验证」，属于过度谨慎，实际未采用。）
+#    跑完核对：
+#    - 五个 job 全 success（version / test / binaries / macos / publish）
 #    - 版本号不是 1.0.1-xxxxxxx（证明 fetch-depth: 0 生效）
 #    - 版本号不是 "latest"（证明 --match 'v[0-9]*' 生效）
 #    - 四个产物可下载、latest release 已刷新
-#    验证通过后再合入 main
+#
+# 5. 按用户路径验证发布产物（最强的一层，因为它走的就是真实使用路径）
+curl -fL -o rpc-dl \
+  https://github.com/PHXStudio/rpc/releases/download/latest/rpc-macos-arm64
+chmod +x rpc-dl && ./rpc-dl --version      # 应报出触发它的那个提交
+shasum -a 256 rpc-dl                       # 应与 SHA256SUMS 一致
+./rpc-dl -i tests/schema/FullTest.rpc -o /tmp/dlout/ -g cpp
 ```
 
 **判定标准**
@@ -252,7 +264,7 @@ scripts/docker-build.sh && ./dist/rpc --version
 | 2 | 产物不可复现的另一个来源 | `__DATE__` / `__TIME__` 会使构建带上时间戳。本计划**刻意不引入**，版本串里只有提交信息 |
 | 3 | 每个提交都发布 | main 上高频提交会持续刷新 `latest`；per-commit artifact 保留 90 天，注意仓库存储配额 |
 | 4 | 滚动 tag 的语义 | `latest` 会被反复强推，对 `git fetch --tags` 的人可能造成困惑，需在 README 说明 |
-| 5 | macOS 工具链 | 系统 bison 2.3 / flex 的可用性待 CI 首跑证实（约束 2） |
+| 5 | ~~macOS 工具链~~ | **已证实可用**：macOS job 首跑通过，系统 bison 2.3 / flex 足以构建（约束 2） |
 | 6 | 发布中断 | 若 publish 中途失败，`latest` 可能短暂处于「新 Linux + 旧 macOS」的混合状态；下一次提交会自愈 |
 
 ---
@@ -315,6 +327,31 @@ GNU sed 接受 BRE 里的 `\+`，**BSD sed（macOS）不接受**，于是同一�
 
 用例数 173 → **176**（新增三个 `Compiler.Version*`）。
 
-**未做**：CI 尚未实跑过——workflow 只能在推送后验证。首跑需重点确认三件事：
-macOS runner 上系统 `bison` 2.3 / `flex` 可用、版本号不是 `1.0.1-xxxxxxx`（`fetch-depth: 0` 生效）、
-版本号不是 `latest`（`--match` 生效）。验证方式见 §4。
+### CI 首跑（2026-09-17，`9711ed3` → `1.0.47-9711ed3`）
+
+**五个 job 全部 success**：`version` / `test` / `linux + windows` / `macos` / `publish`。
+三个待确认项均已证实——不是「job 绿了所以大概没问题」，而是逐条有实证：
+
+| 待确认项 | 证据 |
+|---|---|
+| macOS 上系统 `bison` 2.3 / `flex` 可用 | `macos` job 通过，且它带 `--version` 断言，不是空跑 |
+| 版本号不是 `1.0.1-xxxxxxx` | 发布说明为 `1.0.47-9711ed3`，`fetch-depth: 0` 生效 |
+| 版本号不是 `latest` | 同上，`--match 'v[0-9]*'` 生效 |
+
+`publish` job 成功也顺带证实了仓库的 workflow 权限允许 `contents: write`，
+计划里担心的「只读设置会压回只读」并未发生。
+
+**还做了一层更硬的验证**：按 README 写给用户的路径下载发布产物并实际使用——
+`curl` 取 `rpc-macos-arm64` → 本机运行报 `rpc 1.0.47-9711ed3` → SHA256 与 `SHA256SUMS` 一致
+→ 用它生成四端代码 → 与本地构建的产物 **diff 逐字节一致**。
+即「发布出来的不只是版本号对，而是一个能干活、且与本地构建等价的编译器」。
+
+> 直接推 main 而非先走临时分支，是权衡后的选择：`test` job 是发布门禁，
+> 不过就不产出任何东西，所以坏的工作流最坏结果只是 main 上一个红叉。
+> 计划原文写的「先推临时分支」属于过度谨慎，§4 已更正。
+
+### 仍未做
+
+- Python 运行时产物不单独发行；macOS 只出 arm64（通用二进制留作后续可选项）
+- Windows 产物是 MinGW 交叉编译，**未经真实 Windows 运行验证**（与现状一致）
+- `scripts/assert-test-report.sh` 抓不到 `RPC_HAVE_DOTNET=0` 导致的 `GTEST_SKIP()`（见知识库 §11）
