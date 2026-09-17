@@ -10,7 +10,7 @@
 /* bison value type. */
 #include <string>
 #define YYSTYPE std::string
-#include "bin.tab.hpp"
+#include "rpc.tab.hpp"
 
 #include "Compiler.h"
 
