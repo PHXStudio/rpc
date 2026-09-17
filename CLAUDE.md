@@ -81,6 +81,13 @@ python3 -c "import ast; ast.parse(open('X.py').read())"   # Python 语法
 
 **Go 的产物还需要生成一份 `go.mod` 指向 `runtime/go`**（module `github.com/rpc/runtime`）才能编译。
 
+> **service 路径同样要真实编译并运行，而且要站在生成代码之外。**
+> C# 与 Go 的 Stub / Proxy / Dispatcher 直到 2026-09-17 才第一次被编译执行，
+> 四个 Go 缺陷此前一直潜伏其中（见知识库 §12）—— 此前两个后端都有编译验证，
+> 但只覆盖 struct 序列化，而方法与 struct 在生成器里是两套独立代码。
+> `tests/go/service/` 用的是**外部测试包**（`package fulltest_test`）：只有站在生成代码之外，
+> 「方法未导出、其他包调用不到」才是编译期错误，否则这类问题在有测试的情况下依然不会暴露。
+
 ### 规则四：命名一律为 `rpc`
 
 `bin` 与 `arpc` 是历史命名，已在 `923d720` 统一为 `rpc`。该次统一当时**未改完生成器**，导致 C# 链路长期无法编译（已于后续修复）。新增代码、生成模板、注释中**不要重新引入这两个名字**：
@@ -130,7 +137,7 @@ docker run --rm rpc-linux-test  # 容器内执行 cmake --build --target test
 
 **不能只看 `100% passed`**，还要：
 
-- **对用例总数**：应有 171 个（新增用例时同步更新此数）。数量对不上说明
+- **对用例总数**：应有 173 个（新增用例时同步更新此数）。数量对不上说明
   有 target 没被配置或没被构建。
 - **确认没有 `Skipped`**：跳过意味着对应工具链缺失，那个后端当次并未被验证。
   容器内出现 Skipped 就是 Dockerfile 出了问题，要修 Dockerfile 而不是忽略。

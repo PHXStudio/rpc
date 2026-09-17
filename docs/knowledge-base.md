@@ -523,14 +523,20 @@ public static class ServiceBaseDispatcher { public static bool dispatch(...); }
 
 ```go
 // Go
-type ServiceBaseStub struct { ... }
+type ServiceBaseStub struct { ... }   // 由 NewXStub(begin, end) 构造
 type ServiceBaseProxy interface { ... }
-type ServiceBaseDispatcher struct{}  // 方法名小写开头，包外不可见
+type ServiceBaseDispatcher struct{}   // Dispatch(reader, handler) error
 ```
 
 方法 ID 按**基类优先**的顺序分配，四个后端一致。方法载荷与结构体编码**完全同构**：
 `[uint16 methodId][fmLen][FieldMask][参数]`，掩码语义与结构体一致。唯一的例外是**无参方法不写掩码段**
 （载荷只有 `[methodId]`）。四个后端自 `1e2f637` 起一致。
+
+Go 的 service 标识符（stub 方法、Proxy 接口方法、`dispatchXxx`）与字段走**同一套导出规则**
+（首字母大写）。这不是风格问题：Go 只导出首字母大写的标识符，照抄 IDL 名会让 stub 方法无法被
+其他包调用、Proxy 接口无法被其他包实现，整个 service 只在生成代码自己的包里可用。
+`tests/go/service/` 以**外部测试包**（`package fulltest_test`）编译，把这个约束变成编译期要求。
+传输回调是未导出字段，因此**每个 stub（含派生 service 的 stub）都生成 `NewXStub` 构造函数**。
 
 ### C++ 的两个扩展点
 
@@ -607,6 +613,12 @@ C++ 后端是唯一支持代码注入的后端：`#< ... #>` 把片段插入文�
 C++ ↔ C# 由跨语言文件交换用例覆盖（`rpc_serialization_tests` / `rpc_full_crosslang_tests`），
 其余组合由字节级黄金向量（§11）与 Python 一致性测试守护。
 
+**服务方法载荷另有独立的一组向量**：`MethodPayloadGolden.*`（C++）、`CSharpServiceGolden`、
+`GoServiceGolden` 三方断言**同一批字节**（`method5(1,2,true,EN2)` → `04 00 01 f0 01 02 01`、
+`method10()` → `09 00`、`method3(1.5,2.5,8,9)` → `02 00 01 f0 ...`），
+并各自经 dispatcher 读回校验。方法与 struct 在生成器里是两套独立代码路径，
+只测 struct 覆盖不到它 —— Go 侧因此积压了四个缺陷，见 §12。
+
 > `skipcomp` 一列已随该标记的移除而作废，见 §6。
 
 ### 历史：Python 的嵌套 struct 掩码错位（已修复）
@@ -672,14 +684,22 @@ Python 输出，`y_ = 3` —— 同样是 12 字节，掩码差一位：
 | `rpc_import_tests` | `#import`：定义摊平、无悬空引用、缺失导入致命 | 否 |
 | `rpc_runtime_edge_tests` | `skip` 边界、版本兼容读路径、`dynSize`/整数/浮点字节 golden、MemWriter 溢出 | 否 |
 | `rpc_protocol_limit_tests` | **协议上限必须被强制执行**：枚举越界、`string[N]`/`bytes[N]`/`array[N]` 及元素上界，各含边界内与越界两种情形 | 否 |
-| `rpc_service_tests` | Stub / Proxy 与报文分发 | 否 |
+| `rpc_service_tests` | **C++** 的 Stub / Proxy 与报文分发；含 `MethodPayloadGolden.*` | 否 |
 | `rpc_json_tests` | JSON 序列化与反序列化；含 `JsonGolden.*` 的**硬编码 JSON 文本** | 否 |
 | `rpc_go_generator_tests` | Go 产物**文本断言**（不编译） | 否 |
 | `rpc_wire_format_tests` | **字节级黄金向量**（见下） | 否 |
 | `rpc_interop_crosslang_tests` | InteropFull 向量交给 C# 解码并重编码 | 是（可跳过） |
 | `GoInteropGolden` | **编译并运行** Go 产物，断言同一向量 | 需 Go 工具链 |
+| `GoServiceGolden` | **编译并运行** Go 的 service 产物；外部测试包，含跨版本 + 流式读取器 | 需 Go 工具链 |
+| `CSharpServiceGolden` | **编译并运行** C# 的 service 产物；同一批方法载荷向量 | 是（可跳过） |
 | `PythonInteropGolden` | 生成 Python 断言同一向量 | 需 Python 解释器 |
 | `PythonWireFormatGolden` | 嵌套 struct 掩码向量 | 需 Python 解释器 |
+
+> **service 路径的覆盖是 2026-09-17 才补上的。** 此前只有 C++ 有 service 测试，
+> C# 与 Go 的 Stub / Proxy / Dispatcher 从未被编译或执行过 —— 四个 Go 缺陷
+> （见 §12）就是这样潜伏下来的。`GoServiceGolden` 的测试文件位于
+> `package fulltest_test`（**外部测试包**），这不是风格选择：只有站在生成代码之外，
+> 方法是否导出才是编译期约束，否则「其他包无法调用」这类问题在有测试的情况下依然不会暴露。
 
 ### 字节级黄金向量
 
@@ -805,17 +825,22 @@ Python 与 Go 的两条外部工具链同理：工具链缺失时用例仍然注
 > `CompilerNegative.EnumUnderlyingTypeIsRejected` 守护，
 > `CompilerNegative.PlainEnumIsAccepted` 确认受支持的写法未受影响。
 >
+> **2026-09-17 修复（service 路径）** —— 补齐 C#/Go 的 service 测试时暴露，均经实测确认：
+>
+> | 问题 | 根因 | 验证 |
+> |---|---|---|
+> | Go 的 FieldMask 跳过被 `reader.(*rpc.MemReader)` 类型断言限死：跨版本 + 非内存读取器时**静默参数错位**（`user`/`pass` 读成 `""`/`user`），无错误、无 panic | `ProtocolReader` 接口上没有 `Skip`，生成器只能断言到具体类型 | `GoServiceGolden / TestDispatchNewerPeer_StreamReader`；把产物改回旧写法即复现 |
+> | Go **方法参数中的数组被整体丢弃**：handler 永远收到 nil，元素写进了一个立即离开作用域的切片 | 生成器对方法参数写 `Ints := make(...)`，在 `if fm.ReadBit()` 块内新建变量，遮蔽了函数顶部的 `var Ints []int32` | `GoServiceGolden / TestDispatchRoundTrip_Arrays`，C# 侧同名用例 |
+> | Go 的 service 方法名照抄 IDL（`method1`），**其他包无法调用 stub，也无法实现 Proxy 接口** | 方法名未走导出规则 | `tests/go/service/` 以外部测试包（`package fulltest_test`）编译 |
+> | Go 派生 service 的 stub 没有构造函数，基类传输回调又是未导出字段，**无法从包外构造** | 构造函数只在基类分支生成 | 同上 |
+>
+> 四条都只在 **service 路径**上，struct 序列化不受影响 —— 这正是它们能长期潜伏的原因：
+> 此前的 C#/Go 编译验证（`InteropVerifier`、`GoInteropGolden`）只覆盖 struct，全程是绿的。
+> 后两条为 Go 独有（C# 的 `IReader` 接口上有 `Skip`；Python 是内存缓冲模型，且两者都没有导出概念）。
+>
 > **四种语言在已知的全部维度上已一致**（见 §10），
 > 由 §11 的黄金向量用例与 Python 一致性测试守护。
 > 下列条目均为独立于跨语言互通的其余问题。
-
-### 中等
-
-#### Go 生成代码的 FieldMask 跳过被类型断言限死
-
-`源码` · `compiler/GoGenerator.cpp:850`
-
-版本兼容的 `Skip` 调用写作 `if reader, ok := reader.(*rpc.MemReader); ok` —— 只有内存读取器会执行跳过。换成流式 / socket 读取器时，**跳过被静默忽略**，后续所有字段偏移全错且不报错。C++ 与 C# 通过接口虚函数完成，没有这个限制。
 
 ### 轻微
 
@@ -892,5 +917,6 @@ if (space_ < wtptr_ + len) return;
 `#import` 四端修复、Python 运行时的字符串/布尔/空 struct 缺陷、C# 的 `CS0108`/`CS1522`、
 Go 测试套件恢复可编译、`dynSize`/整数/浮点/JSON 的字节 golden、以及 `InteropFull`
 四端共享黄金向量；工具链缺失时用例改为注册后跳过，Docker 的 tester 阶段补齐 python3 与 Go。
-测试用例从 126 个（124 通过 / 2 失败）增至 **171 个全部通过**。
-所有标注 **实测** 的结论均在重新构建编译器后复现，原始字节输出已列在对应段落中。*
+测试用例从 126 个（124 通过 / 2 失败）增至 **173 个全部通过**（本机与 Docker 一致，无 Skipped）。
+所有标注 **实测** 的结论均在重新构建编译器后复现，原始字节输出已列在对应段落中。
+补齐 C#/Go 的 service 测试后，又在 service 路径上暴露出四个 Go 缺陷（见 §12）。*
