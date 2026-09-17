@@ -141,13 +141,27 @@ static void generateStruct(CodeFile& f, Struct* s)
 	f.output("return _p_");
 	f.recover();
 	f.recover();
-	// Writer & Reader.
+	/* Writer & Reader.
+	   A nested struct occupies exactly one bit of its parent's field mask, and
+	   that bit is always set -- the value is never "absent", the sub-struct is
+	   simply serialized in place. Leaving the bit untouched used to shift every
+	   following field down by one position.
+	   fm is None for array elements: their presence is already carried by the
+	   array's own bit, so nothing must be consumed there. */
 	f.output("def %sWriter(b, v, fm):", s->getNameC());
 	f.indent();
+	f.output("if fm != None:");
+	f.indent();
+	f.output("fm.set(True)");
+	f.recover();
 	f.output("v.serialize(b)");
 	f.recover();
 	f.output("def %sReader(b, p, valMax, fm):", s->getNameC());
 	f.indent();
+	f.output("if fm != None and not fm.get():");
+	f.indent();
+	f.output("return %s(), p", s->getNameC());
+	f.recover();
 	f.output("v = %s()", s->getNameC());
 	f.output("p = v.deserialize(b, p)");
 	f.output("return v, p");

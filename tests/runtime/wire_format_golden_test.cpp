@@ -20,6 +20,7 @@
 
 #include "CrossLangTest.h"
 #include "FullCrossLang.h"
+#include "Nested.h"
 
 namespace {
 
@@ -207,4 +208,68 @@ TEST(WireFormatGolden, IntegerWidthIsDeclaredWidthNotWidened) {
 	ProtocolBytesReader r(buf);
 	ASSERT_TRUE(back.deserialize(&r));
 	EXPECT_EQ(back.i32_, 5);
+}
+
+/* ------------------------------------------------------- nested struct ---- */
+
+/* A nested struct occupies exactly ONE bit of its parent's mask, and that bit
+   is always set -- the sub-struct is never "absent", it is always written in
+   place. Emitting nothing for that bit shifts every following field down by
+   one position, which is what the Python backend used to do. */
+
+TEST(WireFormatGolden, NestedStructTakesOneMaskBit) {
+	Outer v;
+	v.in_.x_ = 7;
+	v.in_.b_ = true;
+	v.y_ = 3;
+
+	// mask 0xC0: bit0 = in_ (always 1), bit1 = y_ != 0.
+	// in_ carries its own block: 01 c0 (fmLen + mask x_!=0,b_=true) 07 00 00 00
+	expectGolden(v, "01 c0 01 c0 07 00 00 00 03 00 00 00");
+	expectRoundtrip(v, "01 c0 01 c0 07 00 00 00 03 00 00 00");
+}
+
+/* The nested struct's bit stays set even when the following field is at its
+   default -- the sub-struct is still present. */
+TEST(WireFormatGolden, NestedStructBitSetWhenSiblingDefaults) {
+	Outer v;
+	v.in_.x_ = 7;
+	v.y_ = 0;
+
+	expectGolden(v, "01 80 01 80 07 00 00 00");
+	expectRoundtrip(v, "01 80 01 80 07 00 00 00");
+}
+
+/* All defaults: the parent mask still has bit0 set, because in_ is a struct
+   and therefore always written. Only y_ is omitted. */
+TEST(WireFormatGolden, NestedStructWrittenEvenWhenEmpty) {
+	Outer v;
+	expectGolden(v, "01 80 01 00");
+	expectRoundtrip(v, "01 80 01 00");
+}
+
+/* Array elements are a different path: the element writer receives NO field
+   mask (fm is None / omitted), because the array's own bit already carries
+   presence. Touching a mask here would either crash or double-consume a bit. */
+TEST(WireFormatGolden, NestedStructAsArrayElement) {
+	Holder h;
+	Inner a;
+	a.x_ = 1;
+	Inner c;
+	c.x_ = 2;
+	h.items_.push_back(a);
+	h.items_.push_back(c);
+	h.z_ = 5;
+
+	expectGolden(h,
+		"01 c0"                                  // fmLen, mask: items_ non-empty, z_ != 0
+		" 02"                                    // dynSize = 2 elements
+		" 01 80 01 00 00 00"                     // Inner { x_ = 1, b_ = false }
+		" 01 80 02 00 00 00"                     // Inner { x_ = 2 }
+		" 05 00 00 00");                         // z_ = 5
+	expectRoundtrip(h,
+		"01 c0 02 01 80 01 00 00 00 01 80 02 00 00 00 05 00 00 00");
+
+	Holder empty;
+	expectGolden(empty, "01 00");
 }

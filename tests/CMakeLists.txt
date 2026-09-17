@@ -56,6 +56,26 @@ add_custom_command(
   VERBATIM
 )
 
+# ---------- Nested schema (nested-struct field mask) ----------
+set(_nested_schema "${CMAKE_CURRENT_SOURCE_DIR}/schema/Nested.rpc")
+set(_nested_gen_cpp "${CMAKE_CURRENT_BINARY_DIR}/generated/nested_cpp")
+set(_nested_gen_py "${CMAKE_CURRENT_BINARY_DIR}/generated/nested_py")
+set(_nested_gen_cpp_slash "${_nested_gen_cpp}/")
+set(_nested_gen_py_slash "${_nested_gen_py}/")
+
+add_custom_command(
+  OUTPUT
+    "${_nested_gen_cpp}/Nested.h"
+    "${_nested_gen_cpp}/Nested.cpp"
+    "${_nested_gen_py}/Nested.py"
+  COMMAND ${CMAKE_COMMAND} -E make_directory "${_nested_gen_cpp}" "${_nested_gen_py}"
+  COMMAND "$<TARGET_FILE:rpc>" -i "${_nested_schema}" -o "${_nested_gen_cpp_slash}" -g cpp
+  COMMAND "$<TARGET_FILE:rpc>" -i "${_nested_schema}" -o "${_nested_gen_py_slash}" -g py
+  DEPENDS rpc "${_nested_schema}"
+  COMMENT "Generating Nested (cpp/py) from RPC schema"
+  VERBATIM
+)
+
 # ---------- GoogleTest ----------
 find_package(GTest QUIET)
 if(NOT GTest_FOUND)
@@ -329,16 +349,36 @@ add_executable(rpc_wire_format_tests
   runtime/wire_format_golden_test.cpp
   "${_gen_cpp}/CrossLangTest.cpp"
   "${_fullcl_gen_cpp}/FullCrossLang.cpp"
+  "${_nested_gen_cpp}/Nested.cpp"
 )
 add_dependencies(rpc_wire_format_tests rpc)
 target_include_directories(rpc_wire_format_tests PRIVATE
   "${CMAKE_SOURCE_DIR}/runtime/cpp"
   "${_gen_cpp}"
   "${_fullcl_gen_cpp}"
+  "${_nested_gen_cpp}"
   "${rapidjson_SOURCE_DIR}/include"
 )
 target_compile_features(rpc_wire_format_tests PRIVATE cxx_std_11)
 target_link_libraries(rpc_wire_format_tests PRIVATE GTest::gtest_main GTest::gtest)
+
+# ---------- Python conformance test ----------
+# The C++ golden vectors pin the wire format but cannot catch a Python-only
+# regression, which is exactly what the nested-struct mask bug was. Skipped
+# when no interpreter is found, mirroring how the .NET tests behave.
+find_package(Python3 COMPONENTS Interpreter QUIET)
+if(Python3_Interpreter_FOUND)
+  add_test(
+    NAME PythonWireFormatGolden
+    COMMAND "${Python3_EXECUTABLE}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/py/wire_format_test.py"
+            "${_nested_gen_py}"
+            "${CMAKE_SOURCE_DIR}/runtime/py"
+  )
+  # The generated Python comes from the same custom command that produces the
+  # C++ sources, so it exists as soon as rpc_wire_format_tests has been built.
+  set_tests_properties(PythonWireFormatGolden PROPERTIES LABELS "rpc")
+endif()
 
 # ---------- Discover tests ----------
 include(GoogleTest)

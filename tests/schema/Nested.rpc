@@ -1,0 +1,22 @@
+/* Minimal schema for nested-struct field-mask tests.
+   A nested struct occupies exactly one bit of its parent's mask, and that bit
+   is always set, so a mistake here shifts every following field by one. */
+struct Inner
+{
+	int32 x_;
+	bool b_;
+};
+
+struct Outer
+{
+	Inner in_;
+	int32 y_;
+};
+
+/* Nested struct as an array element: there the element writer receives no
+   field mask at all, since the array's own bit already carries presence. */
+struct Holder
+{
+	array<Inner> items_;
+	int32 z_;
+};

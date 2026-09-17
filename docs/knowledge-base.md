@@ -583,26 +583,42 @@ C++ 后端是唯一支持代码注入的后端：`#< ... #>` 把片段插入文�
 
 实测结果。这是使用本项目前最需要知道的一张表。
 
-| 组合 | 基本类型 | 非 64 位整数 | bool | 服务方法 | 嵌套 struct |
-|---|---|---|---|---|---|
-| **C++ ↔ C#** | 一致 | 一致 | 一致 | 一致 | 一致 |
-| **C++ ↔ Python** | 一致 | 一致 | 一致 | 一致 | **掩码错位** |
-| **C++ ↔ Go** | 一致 | 一致 | 一致 | 一致 | 未实测 |
+**四种语言在已知的全部维度上均已一致，无未解决项。**
 
-**已验证的一致关系**：对 `struct { int32 i32_; string s_; bytes b_; }` 与
-`struct { int32 n_; bool flag_; }` 两组 schema、多组字段值，C++ / Python / Go 三方输出**逐字节相同**
-且可互相读取；C++ ↔ C# 由跨语言文件交换用例覆盖。整数按声明宽度写出、bool 只占掩码位。
+| 维度 | 状态 |
+|---|---|
+| 基本类型（标量 / 字符串 / 数组 / bool / 枚举） | 一致 |
+| 非 64 位整数按声明宽度写出 | 一致 |
+| 服务方法载荷（`[methodId][fmLen][fmask][参数]`） | 一致 |
+| 嵌套 struct（占父级一位，恒为 1） | 一致 |
+| 嵌套 struct 作为数组元素（元素侧无掩码） | 一致 |
 
-> 说明：`skipcomp` 一列已随该标记的移除而作废，见 §6。
-> 表头「基本类型」一列指不含嵌套 struct 与服务方法的普通结构体。
+**已验证的方式**：同一 schema、同一组字段值，四方输出逐字节相同且可互相读取。
+C++ ↔ C# 由跨语言文件交换用例覆盖（`rpc_serialization_tests` / `rpc_full_crosslang_tests`），
+其余组合由字节级黄金向量（§11）与 Python 一致性测试守护。
 
-### 仍未解决的一处
+> `skipcomp` 一列已随该标记的移除而作废，见 §6。
 
-**Python 的嵌套 struct 掩码错位**（见下）—— 含嵌套 struct 的结构体由 Python 收发时仍会失败。
+### 历史：Python 的嵌套 struct 掩码错位（已修复）
 
-服务方法载荷此前也是缺口，已通过为 Go/Python 补上 `[fmLen][fmask]` 段修复。
+**Python 嵌套 struct 的掩码位错位**
 
-### Python 的嵌套 struct 掩码错位
+`实测` · 已修复 · `compiler/PYGenerator.cpp`
+
+Python 为嵌套 struct 生成的 writer 曾忽略传入的 `fm`，既不置位也不推进位置，
+导致后续字段掩码整体前移一位，且嵌套 struct 自身在掩码中完全消失：
+
+```
+                            C++ / C# / Go          Python（修复前）
+in_.x_=7, in_.b_=true, y_=3  01 c0 01 c0 07 00 …   01 80 01 c0 07 00 …
+in_.x_=7, y_=0               01 80 01 80 07 00 …   01 00 01 80 07 00 …
+```
+
+第二种情形最严重：掩码为 `00` 表示"两个字段都不存在"，数据却仍在。
+
+修法（`PYGenerator.cpp`）：writer 在 `v.serialize(b)` 之前 `fm.set(True)`
+（嵌套 struct 恒占一位且恒为 1），reader 消费该位作为守卫。**数组元素路径传 `fm=None`**，
+此时两侧都不得触碰掩码。
 
 （实测）Python 后端为嵌套 struct 生成的 `XxxWriter(b, v, fm)` 函数体只有一句 `v.serialize(b)`，**既不设置自己的掩码位，也不推进掩码位置**。于是后续字段会占用本该属于嵌套 struct 的那一位，整个掩码**前移一位**。
 
@@ -662,6 +678,12 @@ FullCrossLangPayload{bool_=true}             →  01 20        ← bool 不占�
 
 方法载荷的黄金向量在 `tests/runtime/service_test.cpp` 的 `MethodPayloadGolden.*` 中，
 固定 `[methodId][fmLen][fmask][参数]` 的确切字节，含无参方法（无掩码段）与非默认值省略两种情形。
+嵌套 struct 的向量在 `wire_format_golden_test.cpp` 的 `WireFormatGolden.Nested*` 中。
+
+**C++ 黄金向量抓不到 Python 专有的回归** —— 而嵌套 struct 掩码错位恰恰只存在于
+Python 后端。因此另有 `tests/py/wire_format_test.py`（CTest 中名为 `PythonWireFormatGolden`），
+用**生成的 Python 代码**跑同一批字节断言。找不到解释器时该用例跳过，
+与 .NET 用例的处理方式一致。
 
 每个期望值都先按格式规范手工推导、再与生成器输出核对。这是防止线格式被无意改动的唯一回归网。
 
@@ -698,21 +720,14 @@ C++ 与 C# 的互操作通过**临时二进制文件交换**验证，而不是�
 
 > **已修复**：Go 整数宽度、Go 生成代码无法编译、C# 命名空间断裂、
 > `(skipcomp)` 造成的跨语言不兼容（该标记已从语法中移除）、
-> 以及 Go/Python 方法载荷缺少 FieldMask。
-> 修复后四种语言在基本类型与服务方法上输出逐字节一致，
-> 由 §11 的黄金向量用例守护。
-
-### 严重
-
-（无）
+> Go/Python 方法载荷缺少 FieldMask、Python 嵌套 struct 掩码错位、
+> 以及 `rpc.l` 引用已改名的 `bin.tab.hpp` 导致干净构建失败。
+>
+> **四种语言在已知的全部维度上已一致**（见 §10），
+> 由 §11 的黄金向量用例与 Python 一致性测试守护。
+> 下列条目均为独立于跨语言互通的其余问题。
 
 ### 中等
-
-#### Python 嵌套 struct 的掩码位错位
-
-`实测` · `compiler/PYGenerator.cpp:145`
-
-为嵌套 struct 生成的 writer 忽略传入的 `fm` 参数，既不置位也不推进位置，导致后续字段掩码整体前移一位。C++ 读 Python 数据或反向都会失败。详见 §10 的字节对照。
 
 #### Go 测试套件无法编译
 

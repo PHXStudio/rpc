@@ -85,15 +85,22 @@ python3 -c "import ast; ast.parse(open('X.py').read())"   # Python 语法
 
 ### 规则五：跨语言兼容性是默认要求
 
-新写或修改的 schema，默认应能在四种语言间互通。标量、字符串、数组、bool、枚举
-以及服务方法载荷，均已验证四方输出逐字节一致，由 `rpc_wire_format_tests`
-与 `service_test.cpp` 的 `MethodPayloadGolden.*` 守护。
+新写或修改的 schema，默认应能在四种语言间互通。**已知的全部维度均已验证一致**：
+标量、字符串、数组、bool、枚举、服务方法载荷、嵌套 struct（含作为数组元素的情形）。
 
-已知**仍会破坏互通**的一处：
+三组回归网共同守护：
 
-- **结构体中嵌套 struct 后由 Python 收发** —— Python 生成的嵌套 writer 不设置自己的掩码位，后续字段掩码整体前移一位。
+| 用例 | 覆盖 |
+|---|---|
+| `rpc_wire_format_tests` | C++ 字节级黄金向量 |
+| `service_test.cpp` 的 `MethodPayloadGolden.*` | 方法载荷字节 |
+| `PythonWireFormatGolden` | **生成的 Python 代码**跑同一批字节断言 |
 
-改动线格式时，必须同步更新上述两组黄金向量。详情见知识库 §10 与 §12。
+> **C++ 黄金向量抓不到 Python 专有的回归** —— 嵌套 struct 掩码错位就只存在于 Python 后端，
+> 期间所有 C++ 用例始终全绿。改 `PYGenerator.cpp` 时务必确认 `PythonWireFormatGolden` 真的执行了
+> （找不到解释器时它会静默跳过）。
+
+改动线格式时，必须同步更新上述三组。详情见知识库 §10 与 §12。
 
 ### 规则六：提交前必须端到端验证
 
