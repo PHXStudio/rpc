@@ -520,7 +520,9 @@ type ServiceBaseProxy interface { ... }
 type ServiceBaseDispatcher struct{}  // 方法名小写开头，包外不可见
 ```
 
-方法 ID 按**基类优先**的顺序分配，四个后端一致。方法载荷的编码是 `[uint16 methodId][参数]`，且参数区**不带 FieldMask** —— 这是它与结构体编码的唯一结构差异。
+方法 ID 按**基类优先**的顺序分配，四个后端一致。方法载荷与结构体编码**完全同构**：
+`[uint16 methodId][fmLen][FieldMask][参数]`，掩码语义与结构体一致。唯一的例外是**无参方法不写掩码段**
+（载荷只有 `[methodId]`）。四个后端自 `1e2f637` 起一致。
 
 ### C++ 的两个扩展点
 
@@ -652,16 +654,23 @@ Python 输出，`y_ = 3` —— 同样是 12 字节，掩码差一位：
 
 全部用例通过 `gtest_discover_tests` 注册，且只有**一个 label**：`rpc`。因此 `ctest -L rpc` 就是全量测试，没有更细的筛选维度。
 
-| 目标 | 覆盖内容 | 依赖 .NET |
+| 目标 | 覆盖内容 | 依赖外部工具 |
 |---|---|---|
 | `rpc_serialization_tests` | 内存往返 + C++↔C# 文件交换 | 是（可跳过） |
 | `rpc_full_schema_tests` | 全类型 schema 往返 | 否 |
 | `rpc_full_crosslang_tests` | 跨语言（含 enum / 数组） | 是（可跳过） |
 | `rpc_compiler_tests` | 调用编译器并检查产物文本 | 否 |
+| `rpc_compiler_negative_tests` | **编译器负例**：坏 schema 必须非零退出 | 否 |
+| `rpc_import_tests` | `#import`：定义摊平、无悬空引用、缺失导入致命 | 否 |
+| `rpc_runtime_edge_tests` | `skip` 边界、版本兼容读路径、MemWriter 溢出 | 否 |
 | `rpc_service_tests` | Stub / Proxy 与报文分发 | 否 |
 | `rpc_json_tests` | JSON 序列化与反序列化 | 否 |
 | `rpc_go_generator_tests` | Go 产物**文本断言**（不编译） | 否 |
 | `rpc_wire_format_tests` | **字节级黄金向量**（见下） | 否 |
+| `rpc_interop_crosslang_tests` | InteropFull 向量交给 C# 解码并重编码 | 是（可跳过） |
+| `GoInteropGolden` | **编译并运行** Go 产物，断言同一向量 | 需 Go 工具链 |
+| `PythonInteropGolden` | 生成 Python 断言同一向量 | 需 Python 解释器 |
+| `PythonWireFormatGolden` | 嵌套 struct 掩码向量 | 需 Python 解释器 |
 
 ### 字节级黄金向量
 
@@ -679,6 +688,20 @@ FullCrossLangPayload{bool_=true}             →  01 20        ← bool 不占�
 方法载荷的黄金向量在 `tests/runtime/service_test.cpp` 的 `MethodPayloadGolden.*` 中，
 固定 `[methodId][fmLen][fmask][参数]` 的确切字节，含无参方法（无掩码段）与非默认值省略两种情形。
 嵌套 struct 的向量在 `wire_format_golden_test.cpp` 的 `WireFormatGolden.Nested*` 中。
+
+**`InteropFull` 向量是四端共享的契约**（`WireFormatGolden.Interop*`）。此前
+`CrossLangTest`（3 字段）与 `FullCrossLang`（7 字段）合计从未覆盖 `int8/16/64`、`float/double`、
+嵌套 struct 与字符串数组 —— 任何后端放宽整数宽度或丢掉浮点，跨语言用例都仍然全绿。
+`tests/schema/InteropFull.rpc` 补齐这些维度，同一组字节由四个后端各自断言：
+
+| 后端 | 断言位置 | 是否真正运行产物 |
+|---|---|---|
+| C++ | `WireFormatGolden.InteropPayloadAllFieldsPresent` | 是 |
+| C# | `rpc_interop_crosslang_tests` → `InteropVerifier.cs` | 是 |
+| Python | `PythonInteropGolden` → `tests/py/interop_test.py` | 是 |
+| Go | `GoInteropGolden` → `tests/go/interop_golden_test.go` | 是 |
+
+四者都固定同一串手工推导的 hex（74 字节），而不是互相传值往返 —— 后者任何自洽编码都能通过。
 
 **C++ 黄金向量抓不到 Python 专有的回归** —— 而嵌套 struct 掩码错位恰恰只存在于
 Python 后端。因此另有 `tests/py/wire_format_test.py`（CTest 中名为 `PythonWireFormatGolden`），
@@ -698,9 +721,17 @@ C++ 与 C# 的互操作通过**临时二进制文件交换**验证，而不是�
 
 找不到 `dotnet` 时，对应用例编译成 `GTEST_SKIP()`，**跳过而非失败**。
 
-> **Go 与 Python 没有接入 CTest**
+> **Go 与 Python 的接入方式**
 >
-> `runtime/go/` 下有一套相当完整的 Go 测试（约 40 个用例），但需要手动 `go test ./...`；CMake 侧的 "Go 测试" 只是用 C++ 写的**文本断言**，不编译生成的 Go 代码 —— 这正是 §12 里那些 Go 语法错误能长期存在的原因。Python 侧则完全没有测试：`tests/py/` 是空目录，只留下已删除用例的 pytest 缓存。
+> `runtime/go/` 自身的测试（约 160 个用例/子测试）需要手动 `go test ./...`；CMake 侧的
+> `rpc_go_generator_tests` 仍只是 C++ 写的**文本断言**，不编译生成的 Go 代码。
+> 真正的 Go 行为验证由 `GoInteropGolden` 承担：它把生成的代码与测试文件放进一个
+> 构建期模块（`tests/go/go.mod.in` + `replace` 指向 `runtime/go`）后 `go test`，
+> 因此 Go 产物同时被**编译**和**运行**。
+>
+> Python 侧由 `PythonWireFormatGolden`（嵌套掩码）与 `PythonInteropGolden`（InteropFull 向量）
+> 覆盖，两者都在找不到解释器时**不注册**（连 skip 记录都没有），且 Dockerfile 的 tester
+> 阶段未安装 python3 —— 在容器里跑测试时这两项不会执行。
 
 ### 依赖获取
 
@@ -723,23 +754,29 @@ C++ 与 C# 的互操作通过**临时二进制文件交换**验证，而不是�
 > Go/Python 方法载荷缺少 FieldMask、Python 嵌套 struct 掩码错位、
 > 以及 `rpc.l` 引用已改名的 `bin.tab.hpp` 导致干净构建失败。
 >
+> **2026-09-17 修复**（均经实测确认，非推断）：
+>
+> | 问题 | 根因 | 验证 |
+> |---|---|---|
+> | Python `stringWriter`/`boolWriter` 追加 `str`，`b''.join(buf)` 抛 `TypeError` | 写入器未编码 | 四端 InteropFull 向量一致 |
+> | Python 空 struct 生成 `__init__(self):` 空函数体 → `IndentationError`，整个模块不可导入 | 生成器缺 `pass` 守卫 | `rpc_import_tests` 与 `Edge`/`InteropEmpty` 用例 |
+> | Python 空 struct 多写 1 字节掩码，与其余三端线格式不一致 | 同上的掩码块无守卫 | `InteropEmptyWritesNothing`（四端均 0 字节） |
+> | Python `boolReader` 用 `b[p] == '\000'`（int 比 str，恒假）→ `array<bool>` 全读成 `true` | Py2 遗留比较 | `PythonInteropGolden` 往返检查 |
+> | Python `stringReader` 返回 `bytes` 而 writer 收 `str`；三处裸 `raise` | 读写不对称 + Py2 裸 raise | 同上 |
+> | C# 派生 struct 的嵌套 `FID` 枚举未加 `new` → `CS0108` | 生成器遗漏修饰符 | 接入编译验证后暴露 |
+> | C# 空 struct 生成空 `switch` → `CS1522` | 同上 | 同上 |
+> | `#import` **四个后端全部不可用**（定义未摊平 + 悬空引用） | 定义循环的 `getFile()` 过滤 | `rpc_import_tests`，四端产物均编译通过 |
+> | Go 测试套件因 `fm.Pos undefined` 整包编译失败（约 40 用例不执行） | `FieldMask` 缺 `Pos()` | `go test ./...` 全绿 |
+> | Go 测试的 `dynSize`/`int16` 期望值是**测试数据错**（漏掉长度标记 / 写成大端） | 测试写错，实现对 | 逐条对照 §5 规范 |
+> | `BUILD_TESTING` 判定顺序错误，测试默认不配置 | `include(CTest)` 顺序 | 默认配置即注册测试 |
+> | `version_*` 三个孤儿文件（越界 `skip` 负断言唯一来源） | 从未接入构建 | 断言迁入 `rpc_runtime_edge_tests` 后删除 |
+> | `compiler_test` 中两个指向已删除 `bin/` 的必然失败用例 | 路径未随重命名更新 | 由 `rpc_import_tests` 取代 |
+>
 > **四种语言在已知的全部维度上已一致**（见 §10），
 > 由 §11 的黄金向量用例与 Python 一致性测试守护。
 > 下列条目均为独立于跨语言互通的其余问题。
 
 ### 中等
-
-#### Go 测试套件无法编译
-
-`实测` · `runtime/go/fieldmask_test.go:131`
-
-`go test ./...` 直接报 `fm.Pos undefined`（字段实为小写 `pos`），整个包构建失败，**约 40 个用例一个都不会执行**。因此 Go 运行时长期处于无测试覆盖状态。
-
-#### Go 的 dynSize 测试期望值与实现不符
-
-`实测` · `runtime/go/writer_test.go:142` · `runtime/go/crosslang_test.go:111`
-
-测试期望 `0x40 → {0x40, 0x00}`，但实测 C++ 与 Go 两边的**实现**都输出 `0x40 0x40`（首字节需 OR 上 2 位长度标记）。实现是对的，**测试数据是错的** —— 因为上面的编译失败，这些断言从未真正跑过。
 
 #### Go 生成代码的 FieldMask 跳过被类型断言限死
 
@@ -747,25 +784,7 @@ C++ 与 C# 的互操作通过**临时二进制文件交换**验证，而不是�
 
 版本兼容的 `Skip` 调用写作 `if reader, ok := reader.(*rpc.MemReader); ok` —— 只有内存读取器会执行跳过。换成流式 / socket 读取器时，**跳过被静默忽略**，后续所有字段偏移全错且不报错。C++ 与 C# 通过接口虚函数完成，没有这个限制。
 
-#### `BUILD_TESTING` 判定顺序错误，测试默认不配置
-
-`实测` · `CMakeLists.txt:43`
-
-`if(BUILD_TESTING)` 写在 `include(CTest)` **之前**，而该变量正是由 `include(CTest)` 定义的。不显式传 `-DBUILD_TESTING=ON`，整个 `tests/` 永远不会被配置。实测仓库自带的 `build/` 中 `ctest -N` 报告 `Total Tests: 0`，且缓存里没有该变量 —— 该构建树从未配置过测试。
-
-#### `#import` 的唯一测试已失效，该特性零覆盖
-
-`实测` · `tests/runtime/compiler_test.cpp:76,88`
-
-这两个用例仍指向 `bin/Import.rpc` 与 `bin/Example.rpc`，但 `bin/` 目录已在重命名提交中被删除。用例**必然失败**，而仓库中已无任何其他 `#import` 覆盖。README 也仍指向已删除的路径。
-
 ### 轻微
-
-#### Python 运行时是 Python 2 风格
-
-`实测` · `runtime/py/rpc/writer.py` · `runtime/py/rpc/reader.py`
-
-生成的 `serialize()` 往同一个 list 里混装 `bytes` 与 `str`（`b.append('\001')` 追加的是 str），Python 3 下 `b''.join(b)` 直接抛 `TypeError`。读取侧的 `stringReader` / `enumReader` 用了**裸 `raise`**（不在 `except` 块内），实际抛出的是 `RuntimeError: No active exception to re-raise`，而不是预期的长度校验异常。代码本身可运行（实测手动归一化后往返正确），但需要调用方自行处理类型。
 
 #### C++ 运行时用 `c_str()` 去 const 写入
 
@@ -788,11 +807,11 @@ if (space_ < wtptr_ + len) return;
 
 `write()` 返回 `void`，缓冲区不足时既不报错也不返回状态，产生被截断的消息。对不可信输入是安全隐患。
 
-#### 仓库自带的编译器二进制是过期的
+#### `build/` 里的二进制可能落后于源码
 
 `实测` · `build/compiler/rpc`
 
-`build/` 里的二进制构建于命名空间统一提交**之前**，生成的仍是旧 `arpc` / `github.com/arpc/runtime` 引用。重新构建时 17 个源文件全部重编，证实其陈旧。直接用它生成代码会得到与源码不符的结果。
+改动生成器后若不重新构建，`build/` 中的 `rpc` 会产出与源码不符的代码。这不是假设：仓库曾长期携带一个构建于命名空间统一提交**之前**的二进制，生成的仍是旧 `arpc` 引用。**任何生成器改动后都必须 `cmake --build build --target rpc`**（CLAUDE.md 规则六）。
 
 #### 未接线的遗留资产
 
@@ -836,4 +855,7 @@ if (space_ < wtptr_ + len) return;
 
 ---
 
-*本文基于 `main` 分支 `923d720`，分析于 2026-09-17。所有标注 **实测** 的结论均在重新构建编译器后复现，原始字节输出已列在对应段落中。*
+*初版基于 `main` 分支 `923d720`（2026-09-17）。同日对测试套件做了一轮修复与补全：
+`#import` 四端修复、Python 运行时的字符串/布尔/空 struct 缺陷、C# 的 `CS0108`/`CS1522`、
+Go 测试套件恢复可编译，并新增 `InteropFull` 四端共享黄金向量（当前 150 个 CTest 用例全绿）。
+所有标注 **实测** 的结论均在重新构建编译器后复现，原始字节输出已列在对应段落中。*

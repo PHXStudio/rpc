@@ -50,7 +50,12 @@ ctest --test-dir build --output-on-failure -L rpc
 四个生成器是彻底的复制-分叉结构（`CppGenerator` / `CSGenerator` / `PYGenerator` / `GoGenerator`，彼此不共享代码）。同一个特性漏实现一两个后端是**已经发生过的事**：
 
 - `(skipcomp)` 曾只在 C++ 与 C# 中实现，Go 与 Python 完全忽略它，同一份 schema 因此产生两种字节流（该标记已从语法中移除）。
-- 服务方法载荷至今仍不一致：C++ 与 C# 带 FieldMask 段，Go 与 Python 不带。
+- 服务方法载荷曾不一致（C++/C# 带 FieldMask 段，Go/Python 不带），已于 `1e2f637` 修复。
+- `#import` 曾四个后端**全部不可用**：定义循环跳过非本文件的定义，同时生成指向从未产出文件的引用语句，四端产物均无法编译。已于 2026-09-17 修复（定义摊平 + 移除悬空引用）。
+
+**每个后端都必须有真实编译验证**，文本断言不算数。`FullTest.cs` 长期未被任何构建编译过，
+`CS0108` 与空 struct 的 `CS1522` 因此潜伏至今 —— 这两个都是接入编译验证后才暴露的。
+现有防护：`rpc_interop_crosslang_tests`（编译并运行 C# 产物）、`GoInteropGolden`（编译并运行 Go 产物）。
 
 改动序列化逻辑时，务必确认四个后端对同一份输入产出相同字节——**现有测试的往返断言抓不到这类问题**。
 
