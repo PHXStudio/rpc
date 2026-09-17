@@ -1219,8 +1219,9 @@ void GoGenerator::generate()
     for(size_t i = 0; i < Compiler::inst().definitions_.size(); i++)
     {
         Definition* definition = Compiler::inst().definitions_[i];
-        if(definition->getFile() != Compiler::inst().filename_)
-            continue;
+        /* #imported definitions are flattened into this output as well.
+           Skipping them (as this used to) left every type they define
+           undefined while still being referenced by the root file. */
         if(definition->getEnum())
             hasEnum = true;
         else if(definition->getService())
@@ -1240,23 +1241,17 @@ void GoGenerator::generate()
     f.output(")");
     f.output("");
 
-    // Include imports for other files
-    if(Compiler::inst().imports_.size() > 0)
-    {
-        for(size_t i = 0; i < Compiler::inst().imports_.size(); i++)
-        {
-            std::string importPkg = toPackageName(Compiler::inst().imports_[i]);
-            f.output("import \"%s\"", importPkg.c_str());
-        }
-        f.output("");
-    }
+    /* No import statement for imported schemas: an imported file does not get
+       a package of its own. Its definitions are flattened into this file by
+       the loop below, so importing a separate package would fail to build. */
 
     // Generate definitions
     for(size_t i = 0; i < Compiler::inst().definitions_.size(); i++)
     {
         Definition* definition = Compiler::inst().definitions_[i];
-        if(definition->getFile() != Compiler::inst().filename_)
-            continue;
+        /* #imported definitions are flattened into this output as well.
+           Skipping them (as this used to) left every type they define
+           undefined while still being referenced by the root file. */
 
         f.output("//=============================================================");
         f.output("");

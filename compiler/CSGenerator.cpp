@@ -398,7 +398,10 @@ static void generateStruct(CodeFile& f, Struct* s)
 	}
 	/** Field ids. */
 	f.output("// member ids.");
-	f.output("public enum FID");
+	/* A derived struct redeclares FID with its own field ids. Without "new"
+	   the compiler reports CS0108 (hides inherited member) on every derived
+	   struct -- the same reason serialize/deserialize below carry it. */
+	f.output("public %s enum FID", s->super_?"new":"");
 	f.output("{");
 	f.indent();
 	size_t fid = s->super_?s->super_->getFieldNum():0;
@@ -435,22 +438,27 @@ static void generateStruct(CodeFile& f, Struct* s)
 	f.output("public %s bool serializeField(uint fid, rpc.IWriter w)", s->super_?"new":"");
 	f.output("{");
 	f.indent();
-	f.output("switch(fid)");
-	f.output("{");
-	f.indent();
-	for(size_t i = 0; i < s->fields_.size(); i++)
+	/* A struct with no fields of its own contributes no cases; an empty switch
+	   is a CS1522 warning, so omit it rather than emitting a dead block. */
+	if(s->fields_.size())
 	{
-		Field& field = s->fields_[i];
-		f.output("case (uint)FID.%s:", field.getNameC());
+		f.output("switch(fid)");
 		f.output("{");
 		f.indent();
-		generateFieldSerializeCode(f, field, "w", false);
+		for(size_t i = 0; i < s->fields_.size(); i++)
+		{
+			Field& field = s->fields_[i];
+			f.output("case (uint)FID.%s:", field.getNameC());
+			f.output("{");
+			f.indent();
+			generateFieldSerializeCode(f, field, "w", false);
+			f.recover();
+			f.output("}");
+			f.output("return true;");
+		}
 		f.recover();
 		f.output("}");
-		f.output("return true;");
 	}
-	f.recover();
-	f.output("}");
 	if(s->super_)
 		f.output("return base.serializeField(fid, w);");
 	else
@@ -461,22 +469,26 @@ static void generateStruct(CodeFile& f, Struct* s)
 	f.output("public %s bool deserializeField(uint fid, rpc.IReader r)", s->super_?"new":"");
 	f.output("{");
 	f.indent();
-	f.output("switch(fid)");
-	f.output("{");
-	f.indent();
-	for(size_t i = 0; i < s->fields_.size(); i++)
+	// Same as serializeField: no fields, no cases, no switch.
+	if(s->fields_.size())
 	{
-		Field& field = s->fields_[i];
-		f.output("case (uint)FID.%s:", field.getNameC());
+		f.output("switch(fid)");
 		f.output("{");
 		f.indent();
-		generateFieldDeserializeCode(f, field, "r", false);
+		for(size_t i = 0; i < s->fields_.size(); i++)
+		{
+			Field& field = s->fields_[i];
+			f.output("case (uint)FID.%s:", field.getNameC());
+			f.output("{");
+			f.indent();
+			generateFieldDeserializeCode(f, field, "r", false);
+			f.recover();
+			f.output("}");
+			f.output("return true;");
+		}
 		f.recover();
 		f.output("}");
-		f.output("return true;");
 	}
-	f.recover();
-	f.output("}");
 	if(s->super_)
 		f.output("return base.deserializeField(fid, r);");
 	else
@@ -671,8 +683,9 @@ void CSGenerator::generate()
 	for(size_t i = 0; i < Compiler::inst().definitions_.size(); i++)
 	{
 		Definition* definition = Compiler::inst().definitions_[i];
-		if(definition->getFile() != Compiler::inst().filename_)
-			continue;
+		/* #imported definitions are flattened into this output as well.
+		   Skipping them (as this used to) left every type they define
+		   undefined while still being referenced by the root file. */
 		f.output("//=============================================================");
 		if (definition->getEnum())
 			generateEnum(f, definition->getEnum());

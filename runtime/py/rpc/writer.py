@@ -58,11 +58,13 @@ def boolWriter(b, v, fm):
     if fm:
         fm.set(v)
     else:
-        if v:
-            b.append('\001')
-        else:
-            b.append('\000')
+        b.append(b'\001' if v else b'\000')
 def stringWriter(b, v, fm):
+    # The buffer must hold bytes only: appending a str here would make
+    # b"".join(buf) raise TypeError at the caller. Encode text as UTF-8,
+    # matching the C# runtime (Encoding.UTF8).
+    if isinstance(v, str):
+        v = v.encode('utf-8')
     l = len(v)
     if fm:
         if l:

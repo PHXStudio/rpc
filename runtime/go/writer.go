@@ -26,8 +26,15 @@ func (w *MemWriter) Write(data []byte) error {
 }
 
 // Bytes returns the written bytes.
+// Bytes returns a copy of the written bytes.
+//
+// A copy is returned so callers cannot mutate the writer's internal buffer
+// through the result. MemReader.Bytes is deliberately different: there it
+// returns a view of the *unread remainder*, which is a read-only concept.
 func (w *MemWriter) Bytes() []byte {
-	return w.buf
+	out := make([]byte, len(w.buf))
+	copy(out, w.buf)
+	return out
 }
 
 // Reset clears the buffer for reuse.

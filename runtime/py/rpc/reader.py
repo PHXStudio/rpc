@@ -56,22 +56,23 @@ def boolReader(b, p, valMax, fm):
     if fm:
         return fm.get(), p
     else:
-        if b[p] == '\000':
-            return False, p+1
-        else:
-            return True, p+1
+        # b is a bytes-like buffer, so indexing yields an int. Comparing it
+        # against a str ('\000') was always False, which made every element
+        # of an array<bool> read back as True.
+        return b[p] != 0, p+1
 def stringReader(b, p, valMax, fm):
     if fm == None or fm.get():
         l, p = dynSizeReader(b, p)
         if l > valMax:
-            raise
-        return b[p:p+l], p+l
+            raise ValueError("string length %d exceeds limit %d" % (l, valMax))
+        # Mirror stringWriter: UTF-8, same as the C# runtime.
+        return b[p:p+l].decode('utf-8'), p+l
     else:
         return "", p
 def enumReader(b, p, valMax, fm):
     e, p = uint8Reader(b, p, 0, fm)
     if e > valMax:
-        raise
+        raise ValueError("enum value %d exceeds limit %d" % (e, valMax))
     return e, p
 
 def read(rdr, b, p, arrMax, valMax, fm):
@@ -79,7 +80,7 @@ def read(rdr, b, p, arrMax, valMax, fm):
         if fm == None or fm.get():
             s, p = dynSizeReader(b, p)
             if s > arrMax:
-                raise
+                raise ValueError("array length %d exceeds limit %d" % (s, arrMax))
             else:
                 arr = []
                 while s > 0:

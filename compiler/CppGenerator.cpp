@@ -995,13 +995,10 @@ void CppGenerator::generate()
 		f.output("#include \"JsonHelper.h\"");
 		f.output("#include <sstream>");
 		f.output("#include <iomanip>");
-		for(size_t i = 0; i < Compiler::inst().imports_.size(); i++)
-		{
-			std::string incFilename = Compiler::inst().imports_[i];
-			incFilename = incFilename.substr(0,incFilename.find('.'));
-			f.output("#include \"%s.h\"", incFilename.c_str());
-
-		}
+		/* No #include for imported files: an imported schema does not get an
+		   output of its own. Its definitions are flattened into this header by
+		   the loop further down, so including a separate header here would
+		   reference a file that is never generated. */
 
 		// cppcode.
 		if(Compiler::inst().cppcode_.length())
@@ -1011,8 +1008,9 @@ void CppGenerator::generate()
 		for(size_t i = 0; i < Compiler::inst().definitions_.size(); i++)
 		{
 			Definition* definition = Compiler::inst().definitions_[i];
-			if(definition->getFile() != Compiler::inst().filename_)
-				continue;
+			/* #imported definitions are flattened into this output as well.
+			   Skipping them (as this used to) left every type they define
+			   undefined while still being referenced by the root file. */
 			f.output("//=============================================================");
 			if (definition->getEnum())
 				generateEnumDecl(f, definition->getEnum());
@@ -1059,8 +1057,9 @@ void CppGenerator::generate()
 		for(size_t i = 0; i < Compiler::inst().definitions_.size(); i++)
 		{
 			Definition* definition = Compiler::inst().definitions_[i];
-			if(definition->getFile() != Compiler::inst().filename_)
-				continue;
+			/* #imported definitions are flattened into this output as well.
+			   Skipping them (as this used to) left every type they define
+			   undefined while still being referenced by the root file. */
 			f.output("//=============================================================");
 			if (definition->getEnum())
 				generateEnumDef(f, definition->getEnum());

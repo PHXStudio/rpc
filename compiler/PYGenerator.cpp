@@ -74,6 +74,10 @@ static void generateStruct(CodeFile& f, Struct* s)
 		Field& field = s->fields_[i];
 		f.output("self.%s = %s", field.getNameC(), getFieldDefault(field));
 	}
+	// Python rejects an empty body, so a struct with neither a superclass nor
+	// fields still needs an explicit pass statement.
+	if(!s->super_ && s->fields_.size() == 0)
+		f.output("pass");
 	f.recover();
 	// serialize
 	f.output("def serialize(self, _b_):");
@@ -81,7 +85,11 @@ static void generateStruct(CodeFile& f, Struct* s)
 	if(s->super_)
 		f.output("%s.serialize(self, _b_)", s->super_->getNameC());
 
-	// Always write field mask for version compatibility
+	/* A struct with no fields carries no field mask at all: the mask segment
+	   only exists to describe the fields that follow it. This matches the C++,
+	   C# and Go backends, which all skip the segment when the container is
+	   empty. */
+	if(s->fields_.size())
 	{
 		// Write field mask length prefix for version compatibility
 		f.output("# Write field mask length");
@@ -89,19 +97,25 @@ static void generateStruct(CodeFile& f, Struct* s)
 
 		f.output("_fm_ = FieldMaskWriter(%d)", s->getFMByteNum());
 		f.output("_pfm_ = len(_b_)");
-		f.output("_b_.append(\'\')");
+		f.output("_b_.append(b'')");
+	}
+	else if(!s->super_)
+	{
+		f.output("pass");
 	}
 
 	for(size_t i = 0; i < s->fields_.size(); i++)
 	{
 		Field& field = s->fields_[i];
-		f.output("write(%sWriter, %s, _b_, self.%s, _fm_)",
+		f.output("write(%sWriter, %s, _b_, self.%s, %s)",
 			getFieldTypeName(field),
 			field.getArray()?"True":"False",
-			field.getNameC()
+			field.getNameC(),
+			s->fields_.size()?"_fm_":"None"
 			);
 	}
-	f.output("_b_[_pfm_] = _fm_.write()");
+	if(s->fields_.size())
+		f.output("_b_[_pfm_] = _fm_.write()");
 	f.recover();
 	// deserialize
 	f.output("def deserialize(self, _b_, _p_):");
@@ -109,7 +123,8 @@ static void generateStruct(CodeFile& f, Struct* s)
 	if(s->super_)
 		f.output("_p_ = %s.deserialize(self, _b_, _p_)", s->super_->getNameC());
 
-	// Always read field mask for version compatibility
+	// Mirror of the write path: no fields means no mask segment to read.
+	if(s->fields_.size())
 	{
 		// Read field mask length prefix for version compatibility
 		f.output("# Read field mask length");
@@ -131,11 +146,12 @@ static void generateStruct(CodeFile& f, Struct* s)
 	for(size_t i = 0; i < s->fields_.size(); i++)
 	{
 		Field& field = s->fields_[i];
-		f.output("self.%s, _p_= read(%sReader, _b_, _p_, %d, %d, _fm_)",
+		f.output("self.%s, _p_= read(%sReader, _b_, _p_, %d, %d, %s)",
 			field.getNameC(),
 			getFieldTypeName(field),
 			field.getArray()?field.getMaxArrLength():0,
-			getFieldValMax(field)
+			getFieldValMax(field),
+			s->fields_.size()?"_fm_":"None"
 			);
 	}
 	f.output("return _p_");
@@ -191,7 +207,7 @@ static void generateServiceStubMethod(CodeFile& f, size_t id, Method& m)
 		f.output("_b_.append(struct.pack('B', %d))", m.getFMByteNum());
 		f.output("_fm_ = FieldMaskWriter(%d)", m.getFMByteNum());
 		f.output("_pfm_ = len(_b_)");
-		f.output("_b_.append('')");
+		f.output("_b_.append(b'')");
 	}
 
 	for(size_t i = 0; i < m.fields_.size(); i++)
@@ -308,20 +324,18 @@ void PYGenerator::generate()
 	// import.
 	f.output("from rpc.writer import *");
 	f.output("from rpc.reader import *");
-	for(std::set<std::string>::iterator iter = Compiler::inst().importedFiles_.begin();
-		iter != Compiler::inst().importedFiles_.end(); ++iter)
-	{
-		std::string incFilename = *iter;
-		incFilename = incFilename.substr(0,incFilename.find('.'));
-		f.output("from %s import *", incFilename.c_str());
-	}
+	/* No "from <imported> import *" line: an imported schema does not get a
+	   module of its own. Its definitions are flattened into this file by the
+	   loop further down, so importing a separate module would raise
+	   ModuleNotFoundError at import time. */
 
 	// .
 	for(size_t i = 0; i < Compiler::inst().definitions_.size(); i++)
 	{
 		Definition* definition = Compiler::inst().definitions_[i];
-		if(definition->getFile() != Compiler::inst().filename_)
-			continue;
+		/* #imported definitions are flattened into this output as well.
+		   Skipping them (as this used to) left every type they define
+		   undefined while still being referenced by the root file. */
 		if (definition->getEnum())
 			generateEnum(f, definition->getEnum());
 		else if (definition->getStruct())

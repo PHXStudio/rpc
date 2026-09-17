@@ -70,6 +70,11 @@ func (fm *FieldMask) Len() int {
 	return len(fm.masks)
 }
 
+// Pos returns the current read/write bit position within the mask.
+func (fm *FieldMask) Pos() int {
+	return fm.pos
+}
+
 // Clear clears all bits in the mask.
 func (fm *FieldMask) Clear() {
 	for i := range fm.masks {
