@@ -12,8 +12,8 @@ enum EnumName
 	EN3,
 };
 
-/* struct with skipcomp: no field mask compression. */
-struct StructType (skipcomp)
+/* struct with plain field-mask compression. */
+struct StructType
 {
 	string aaa_;
 	int32 bbb_;

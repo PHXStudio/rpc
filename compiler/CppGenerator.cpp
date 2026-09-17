@@ -331,13 +331,13 @@ static void generateEnumDef(CodeFile& f, Enum* e)
 		e->getNameC());
 }
 
-static void generateFieldSerialize(CodeFile& f, Field& field, const char* senderName, bool skipComp)
+static void generateFieldSerialize(CodeFile& f, Field& field, const char* senderName)
 {
 	f.output("// serialize %s",field.getNameC());
 	if(field.getArray())
 	{
-		// 
-		if(!skipComp)		f.output("if(%s.size())", field.getNameC());
+		//
+							f.output("if(%s.size())", field.getNameC());
 							f.output("{");
 							f.indent();
 							f.output("uint32_t __len__ = (uint32_t)%s.size();", field.getNameC());
@@ -378,30 +378,29 @@ static void generateFieldSerialize(CodeFile& f, Field& field, const char* sender
 		}
 		else if(field.getType() == FT_STRING)
 		{
-			if(!skipComp)	f.output("if(%s.length()){", field.getNameC());
+							f.output("if(%s.length()){", field.getNameC());
 							f.output("%s->writeType(%s);", senderName, field.getNameC());
-			if(!skipComp)	f.output("}");
+							f.output("}");
 		}
 		else if(field.getType() == FT_BOOL)
-		{ 
-			/* boolfieldmask.*/ 
-			if(skipComp) 
-			{
-							f.output("%s->writeType(%s);", senderName, field.getNameC());
-			}
+		{
+			/* boolfieldmask: a bool has no payload byte. Its value is carried
+			   entirely by the field mask bit written above, so this branch must
+			   stay empty. Removing it would let FT_BOOL fall through to the
+			   scalar branch below and emit a spurious byte. */
 		}
 		else if(field.getType() == FT_ENUM)
 		{
 							f.output("uint8_t __e__ = (uint8_t)%s;", field.getNameC());
-			if(!skipComp)	f.output("if(__e__){");
+							f.output("if(__e__){");
 							f.output("%s->writeType(__e__);", senderName );
-			if(!skipComp)	f.output("}");
+							f.output("}");
 		}
 		else
 		{
-			if(!skipComp)	f.output("if(%s != %s){", field.getNameC(), getFieldCppDefault(field));
+							f.output("if(%s != %s){", field.getNameC(), getFieldCppDefault(field));
 							f.output("%s->writeType(%s);", senderName, field.getNameC());
-			if(!skipComp)	f.output("}");
+							f.output("}");
 		}
 							f.recover();
 							f.output("}");
@@ -489,7 +488,7 @@ static void generateFieldSerializeJson(CodeFile& f, Field& field)
 	}
 }
 
-static void generateFieldContainerSerialize(CodeFile& f, FieldContainer* fc, const char* senderName, bool skipComp = false)
+static void generateFieldContainerSerialize(CodeFile& f, FieldContainer* fc, const char* senderName)
 {
 	if(!fc->fields_.size())
 		return;
@@ -526,7 +525,7 @@ static void generateFieldContainerSerialize(CodeFile& f, FieldContainer* fc, con
 
 	// field.
 	for(size_t i = 0; i < fc->fields_.size(); i++)
-		generateFieldSerialize(f, fc->fields_[i], senderName, skipComp);
+		generateFieldSerialize(f, fc->fields_[i], senderName);
 }
 
 static void generateFieldContainerSerializeJson(CodeFile& f, FieldContainer* fc)
@@ -647,13 +646,13 @@ static void generateFieldContainerLoadJson(CodeFile& f, FieldContainer* fc)
 	}
 }
 
-static void generateFieldDeserialize(CodeFile& f, Field& field, const char* recvName, bool skipComp)
+static void generateFieldDeserialize(CodeFile& f, Field& field, const char* recvName)
 {
 	f.output("// deserialize %s", field.getNameC());
 	if(field.getArray())
 	{
-		// 
-		if(!skipComp)		f.output("if(__fm__.readBit())");
+		//
+							f.output("if(__fm__.readBit())");
 							f.output("{");
 							f.indent();
 							f.output("uint32_t __len__;");
@@ -698,40 +697,37 @@ static void generateFieldDeserialize(CodeFile& f, Field& field, const char* recv
 		f.indent();
 		if(field.getType() == FT_USER)
 		{
-			if(!skipComp)	f.output("if(__fm__.readBit()){");
+							f.output("if(__fm__.readBit()){");
 							f.output("if(!%s.deserialize(%s)) return false;", field.getNameC(), recvName);
-			if(!skipComp)	f.output("}");
+							f.output("}");
 		}
 		else if(field.getType() == FT_STRING)
 		{
-			if(!skipComp)	f.output("if(__fm__.readBit()){");
+							f.output("if(__fm__.readBit()){");
 							f.output("if(!%s->readType(%s, %d)) return false;", recvName, field.getNameC(), field.getMaxStrLength());
-			if(!skipComp)	f.output("}");
+							f.output("}");
 		}
 		else if(field.getType() == FT_BOOL)
 		{
-			if(!skipComp)
-			{
+			/* boolfieldmask: a bool has no payload byte. The mask bit is the
+			   value itself, so it must be read directly rather than used as a
+			   guard -- guarding on it would skip the assignment whenever the
+			   value is false. */
 							f.output("%s = __fm__.readBit();", field.getNameC());
-			}
-			else
-			{
-							f.output("if(!%s->readType(%s)) return false;", recvName, field.getNameC());
-			}
 		}
 		else if(field.getType() == FT_ENUM)
 		{
 							f.output("uint8_t __e__ = 0;");	//readBit0__e__0
-			if(!skipComp)	f.output("if(__fm__.readBit()){");
-							f.output("if(!%s->readType(__e__) || __e__ >= %d) return false;", recvName, field.getUserType()->getEnum()->items_.size()); 
+							f.output("if(__fm__.readBit()){");
+							f.output("if(!%s->readType(__e__) || __e__ >= %d) return false;", recvName, field.getUserType()->getEnum()->items_.size());
 							f.output("%s = (%s)__e__;", field.getNameC(), getFieldCppType(field, false));
-			if(!skipComp)	f.output("}");
+							f.output("}");
 		}
 		else
 		{
-			if(!skipComp)	f.output("if(__fm__.readBit()){");
+							f.output("if(__fm__.readBit()){");
 							f.output("if(!%s->readType(%s)) return false;", recvName, field.getNameC());
-			if(!skipComp)	f.output("}");
+							f.output("}");
 		}
 		f.recover();
 		f.output("}");
@@ -739,7 +735,7 @@ static void generateFieldDeserialize(CodeFile& f, Field& field, const char* recv
 
 }
 
-static void generateFieldContainerDeserialize(CodeFile& f, FieldContainer* fc, const char* recvName, bool skipComp = false)
+static void generateFieldContainerDeserialize(CodeFile& f, FieldContainer* fc, const char* recvName)
 {
 	if(!fc->fields_.size())
 		return;
@@ -768,7 +764,7 @@ static void generateFieldContainerDeserialize(CodeFile& f, FieldContainer* fc, c
 
 	// field.
 	for(size_t i = 0; i < fc->fields_.size(); i++)
-		generateFieldDeserialize(f, fc->fields_[i], recvName, skipComp);
+		generateFieldDeserialize(f, fc->fields_[i], recvName);
 }
 
 static void generateStructDef(CodeFile& f, Struct* s)
@@ -810,7 +806,7 @@ static void generateStructDef(CodeFile& f, Struct* s)
 	f.indent();
 	if(s->super_)
 		f.output("%s::serialize(__s__);", s->super_->getNameC());
-	generateFieldContainerSerialize(f, s, "__s__", s->skipComp_);
+	generateFieldContainerSerialize(f, s, "__s__");
 	f.recover();
 	f.output("}");
 
@@ -822,7 +818,7 @@ static void generateStructDef(CodeFile& f, Struct* s)
 	f.indent();
 	if(s->super_)
 		f.output("if(!%s::deserialize(__r__)) return false;",s-> super_->getNameC());
-	generateFieldContainerDeserialize(f, s, "__r__", s->skipComp_);
+	generateFieldContainerDeserialize(f, s, "__r__");
 	f.output("	return true;");
 	f.recover();
 	f.output("}");
@@ -901,7 +897,7 @@ static void generateStubMethodDef(CodeFile& f, Service*s, Method& m, size_t pid)
 	f.output("if(!w) return;");
 	f.output("uint16_t pid = %d;", pid);
 	f.output("w->writeType(pid);");
-	generateFieldContainerSerialize(f, &m, "w", true);
+	generateFieldContainerSerialize(f, &m, "w");
 	f.output("methodEnd();");
 	f.recover();
 	f.output("}");
@@ -928,7 +924,7 @@ static void generateProxyMethodDef(CodeFile&f, Method& m, const std::string& svc
 		else
 			f.output("%s %s;", getFieldCppType(field), field.getNameC());
 	}
-	generateFieldContainerDeserialize(f, &m, "__r__", true);
+	generateFieldContainerDeserialize(f, &m, "__r__");
 	f.begin();
 	f.append("return %s(", m.getNameC());
 	for(size_t i = 0; i < m.fields_.size(); i++)

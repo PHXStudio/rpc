@@ -321,9 +321,29 @@ target_include_directories(rpc_go_generator_tests PRIVATE
 target_compile_features(rpc_go_generator_tests PRIVATE cxx_std_11)
 target_link_libraries(rpc_go_generator_tests PRIVATE GTest::gtest_main GTest::gtest)
 
+# 8. Wire format golden vectors
+# Pins the exact bytes of the encoding so a change to any generator or runtime
+# cannot pass unnoticed; the rest of the suite only checks roundtrip equality,
+# which any self-consistent (including wrong) encoding would satisfy.
+add_executable(rpc_wire_format_tests
+  runtime/wire_format_golden_test.cpp
+  "${_gen_cpp}/CrossLangTest.cpp"
+  "${_fullcl_gen_cpp}/FullCrossLang.cpp"
+)
+add_dependencies(rpc_wire_format_tests rpc)
+target_include_directories(rpc_wire_format_tests PRIVATE
+  "${CMAKE_SOURCE_DIR}/runtime/cpp"
+  "${_gen_cpp}"
+  "${_fullcl_gen_cpp}"
+  "${rapidjson_SOURCE_DIR}/include"
+)
+target_compile_features(rpc_wire_format_tests PRIVATE cxx_std_11)
+target_link_libraries(rpc_wire_format_tests PRIVATE GTest::gtest_main GTest::gtest)
+
 # ---------- Discover tests ----------
 include(GoogleTest)
 gtest_discover_tests(rpc_serialization_tests PROPERTIES LABELS "rpc")
+gtest_discover_tests(rpc_wire_format_tests PROPERTIES LABELS "rpc")
 gtest_discover_tests(rpc_full_schema_tests PROPERTIES LABELS "rpc")
 gtest_discover_tests(rpc_full_crosslang_tests PROPERTIES LABELS "rpc")
 gtest_discover_tests(rpc_compiler_tests PROPERTIES LABELS "rpc")

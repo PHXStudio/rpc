@@ -39,6 +39,50 @@ static const char* getFieldGoType(Field& f, bool withArray = true)
     return name.c_str();
 }
 
+/** Writer method on rpc.ProtocolWriter for a scalar field, by declared type.
+    The wire format is width-exact: an int32 occupies 4 bytes, not 8, so the
+    method has to follow the declared type rather than widening to int64.
+    FT_BOOL and FT_ENUM are encoded elsewhere (mask bit and uint8) and must
+    never reach this helper. */
+static const char* getGoWriteMethod(Field& f)
+{
+    switch(f.getType())
+    {
+    case FT_INT64:   return "WriteInt64";
+    case FT_UINT64:  return "WriteUint64";
+    case FT_DOUBLE:  return "WriteFloat64";
+    case FT_FLOAT:   return "WriteFloat32";
+    case FT_INT32:   return "WriteInt32";
+    case FT_UINT32:  return "WriteUint32";
+    case FT_INT16:   return "WriteInt16";
+    case FT_UINT16:  return "WriteUint16";
+    case FT_INT8:    return "WriteInt8";
+    case FT_UINT8:   return "WriteUint8";
+    default:
+        throw "Invalid scalar field type.";
+    }
+}
+
+/** Reader counterpart of getGoWriteMethod. */
+static const char* getGoReadMethod(Field& f)
+{
+    switch(f.getType())
+    {
+    case FT_INT64:   return "ReadInt64";
+    case FT_UINT64:  return "ReadUint64";
+    case FT_DOUBLE:  return "ReadFloat64";
+    case FT_FLOAT:   return "ReadFloat32";
+    case FT_INT32:   return "ReadInt32";
+    case FT_UINT32:  return "ReadUint32";
+    case FT_INT16:   return "ReadInt16";
+    case FT_UINT16:  return "ReadUint16";
+    case FT_INT8:    return "ReadInt8";
+    case FT_UINT8:   return "ReadUint8";
+    default:
+        throw "Invalid scalar field type.";
+    }
+}
+
 static const char* getFieldGoDefault(Field& f)
 {
     if(f.getArray())
@@ -206,19 +250,18 @@ static void generateEnumInfo(CodeFile& f, Enum* e)
 {
     f.output("");
     f.output("// Enum info for %s", e->getNameC());
-    f.output("var %sInfo = NewEnumInfo(\"%s\", []string{", e->getNameC(), e->getNameC());
+    f.output("var %sInfo = rpc.NewEnumInfo(\"%s\", []string{", e->getNameC(), e->getNameC());
     f.indent();
+    // Every element needs a trailing comma: Go requires one before the closing
+    // brace when that brace sits on its own line.
     for(size_t i = 0; i < e->items_.size(); i++)
-    {
-        if(i > 0) f.output(", ");
-        f.output("\"%s\"", e->items_[i].c_str());
-    }
+        f.output("\"%s\",", e->items_[i].c_str());
     f.recover();
     f.output("})");
     f.output("");
     f.output("func init() {");
     f.indent();
-    f.output("RegisterEnum(\"%s\", %sInfo)", e->getNameC(), e->getNameC());
+    f.output("rpc.RegisterEnum(\"%s\", %sInfo)", e->getNameC(), e->getNameC());
     f.recover();
     f.output("}");
 }
@@ -231,6 +274,10 @@ static void generateFieldSerialize(CodeFile& f, Field& field, const std::string&
 {
     std::string goName = toGoFieldName(field.getNameC());
 
+    /* A struct field is reached through the receiver; a method parameter is a
+       plain local, so it must not carry the receiver prefix. */
+    std::string access = isMethod ? goName : ("s." + goName);
+
     if(field.getArray())
     {
         // Array serialization
@@ -239,12 +286,12 @@ static void generateFieldSerialize(CodeFile& f, Field& field, const std::string&
             f.output("if len(s.%s) > 0 {", goName.c_str());
             f.indent();
         }
-        f.output("if err := %s.WriteDynSize(uint32(len(s.%s))); err != nil {", recvName.c_str(), goName.c_str());
+        f.output("if err := %s.WriteDynSize(uint32(len(%s))); err != nil {", recvName.c_str(), access.c_str());
         f.indent();
         f.output("return err");
         f.recover();
         f.output("}");
-        f.output("for _, v := range s.%s {", goName.c_str());
+        f.output("for _, v := range %s {", access.c_str());
         f.indent();
 
         if(field.getType() == FT_USER)
@@ -290,8 +337,8 @@ static void generateFieldSerialize(CodeFile& f, Field& field, const std::string&
         }
         else
         {
-            // Integer types
-            f.output("if err := %s.WriteInt64(int64(v)); err != nil {", recvName.c_str());
+            // Numeric types: write at the declared width.
+            f.output("if err := %s.%s(v); err != nil {", recvName.c_str(), getGoWriteMethod(field));
             f.indent();
             f.output("return err");
             f.recover();
@@ -316,7 +363,7 @@ static void generateFieldSerialize(CodeFile& f, Field& field, const std::string&
         if(field.getType() == FT_USER)
         {
             if(!isMethod) {
-                f.output("if err := s.%s.Serialize(%s); err != nil {", goName.c_str(), recvName.c_str());
+                f.output("if err := %s.Serialize(%s); err != nil {", access.c_str(), recvName.c_str());
                 f.indent();
                 f.output("return err");
                 f.recover();
@@ -335,7 +382,7 @@ static void generateFieldSerialize(CodeFile& f, Field& field, const std::string&
                 f.output("if s.%s != \"\" {", goName.c_str());
                 f.indent();
             }
-            f.output("if err := %s.WriteString(s.%s); err != nil {", recvName.c_str(), goName.c_str());
+            f.output("if err := %s.WriteString(%s); err != nil {", recvName.c_str(), access.c_str());
             f.indent();
             f.output("return err");
             f.recover();
@@ -347,17 +394,14 @@ static void generateFieldSerialize(CodeFile& f, Field& field, const std::string&
         }
         else if(field.getType() == FT_BOOL)
         {
-            // Bool is always written in methods, optional in structs with fieldmask
-            if(!isMethod) {
-                f.output("if s.%s {", goName.c_str());
+            /* boolfieldmask: in a struct a bool has no payload byte at all --
+               its value is the mask bit written by the container, so nothing is
+               emitted here. Method parameters carry no mask, so there it is a
+               real byte and must be written. */
+            if(isMethod) {
+                f.output("if err := %s.WriteBool(%s); err != nil {", recvName.c_str(), access.c_str());
                 f.indent();
-            }
-            f.output("if err := %s.WriteBool(s.%s); err != nil {", recvName.c_str(), goName.c_str());
-            f.indent();
-            f.output("return err");
-            f.recover();
-            f.output("}");
-            if(!isMethod) {
+                f.output("return err");
                 f.recover();
                 f.output("}");
             }
@@ -368,7 +412,7 @@ static void generateFieldSerialize(CodeFile& f, Field& field, const std::string&
                 f.output("if s.%s != %s {", goName.c_str(), getFieldGoDefault(field));
                 f.indent();
             }
-            f.output("if err := %s.WriteUint8(uint8(s.%s)); err != nil {", recvName.c_str(), goName.c_str());
+            f.output("if err := %s.WriteUint8(uint8(%s)); err != nil {", recvName.c_str(), access.c_str());
             f.indent();
             f.output("return err");
             f.recover();
@@ -386,23 +430,13 @@ static void generateFieldSerialize(CodeFile& f, Field& field, const std::string&
                 f.indent();
             }
 
-            if(field.getType() == FT_FLOAT || field.getType() == FT_DOUBLE)
-            {
-                std::string method = field.getType() == FT_FLOAT ? "WriteFloat32" : "WriteFloat64";
-                f.output("if err := %s.%s(s.%s); err != nil {", recvName.c_str(), method.c_str(), goName.c_str());
-                f.indent();
-                f.output("return err");
-                f.recover();
-                f.output("}");
-            }
-            else
-            {
-                f.output("if err := %s.WriteInt64(int64(s.%s)); err != nil {", recvName.c_str(), goName.c_str());
-                f.indent();
-                f.output("return err");
-                f.recover();
-                f.output("}");
-            }
+            // Width-exact: the method follows the declared type, so an int32
+            // occupies 4 bytes on the wire rather than being widened to int64.
+            f.output("if err := %s.%s(%s); err != nil {", recvName.c_str(), getGoWriteMethod(field), access.c_str());
+            f.indent();
+            f.output("return err");
+            f.recover();
+            f.output("}");
 
             if(!isMethod) {
                 f.recover();
@@ -527,8 +561,8 @@ static void generateFieldDeserialize(CodeFile& f, Field& field, const std::strin
         }
         else
         {
-            // Integer types
-            f.output("v, err := %s.ReadInt64()", recvName.c_str());
+            // Numeric types: read at the declared width.
+            f.output("v, err := %s.%s()", recvName.c_str(), getGoReadMethod(field));
             f.indent();
             f.output("if err != nil {");
             f.indent();
@@ -632,8 +666,8 @@ static void generateFieldDeserialize(CodeFile& f, Field& field, const std::strin
         }
         else
         {
-            // Integer types
-            f.output("v, err := %s.ReadInt64()", recvName.c_str());
+            // Numeric types: read at the declared width.
+            f.output("v, err := %s.%s()", recvName.c_str(), getGoReadMethod(field));
             f.indent();
             f.output("if err != nil {");
             f.indent();
@@ -870,6 +904,16 @@ static void generateStructDecl(CodeFile& f, Struct* s)
         Field& field = s->fields_[i];
         std::string goName = toGoFieldName(field.getNameC());
 
+        /* boolfieldmask: a bool field has no payload byte -- the mask bit IS the
+           value, so it must be consumed directly. Wrapping it in
+           `if fm.ReadBit()` would spend the bit as a guard and then look for a
+           byte that was never written. */
+        if(!field.getArray() && field.getType() == FT_BOOL)
+        {
+            f.output("s.%s = fm.ReadBit()", goName.c_str());
+            continue;
+        }
+
         // Always use field mask for version compatibility
         f.output("if fm.ReadBit() {");
         f.indent();
@@ -901,17 +945,16 @@ static void generateStubMethods(CodeFile& f, Service* s)
         f.output("func (s *%sStub) %s(", s->getNameC(), method.getNameC());
 
         // Parameters
+        // Parameters. Every one ends with a comma because Go requires a
+        // trailing comma when the closing paren sits on its own line.
         for(size_t j = 0; j < method.fields_.size(); j++)
         {
             Field& field = method.fields_[j];
             std::string goName = toGoFieldName(field.getNameC());
-            f.output("    %s %s,%s",
-                goName.c_str(),
-                getFieldGoType(field),
-                (j < method.fields_.size() - 1) ? "" : ")");
+            f.output("    %s %s,", goName.c_str(), getFieldGoType(field));
         }
 
-        f.output(" error {");
+        f.output(") error {");
         f.indent();
 
         f.output("writer := s.beginMethod()");
@@ -1005,17 +1048,22 @@ static void generateProxyDecl(CodeFile& f, Service* s)
     for(size_t i = 0; i < s->methods_.size(); i++)
     {
         Method& method = s->methods_[i];
-        f.output("%s(", method.getNameC());
-
+        // Single line: a multi-line signature would need a trailing comma, and
+        // the method returns error so the dispatcher can forward the handler's
+        // result directly.
+        f.begin();
+        f.append("%s(", method.getNameC());
         for(size_t j = 0; j < method.fields_.size(); j++)
         {
             Field& field = method.fields_[j];
             std::string goName = toGoFieldName(field.getNameC());
-            f.output("    %s %s%s",
+            f.append("%s %s%s",
                 goName.c_str(),
                 getFieldGoType(field),
-                (j < method.fields_.size() - 1) ? ", " : ")");
+                (j < method.fields_.size() - 1) ? ", " : "");
         }
+        f.append(") error");
+        f.end();
 
         if(i < s->methods_.size() - 1)
             f.output("");
@@ -1054,12 +1102,23 @@ static void generateProxyDispatcher(CodeFile& f, Service* s)
     std::vector<Method*> allMethods;
     s->getAllMethods(allMethods);
 
+    /* getAllMethods returns base methods first, and only this service's own
+       methods get a dispatch%s defined on this type. An inherited method is
+       forwarded to the base dispatcher, which resolves it recursively. A
+       derived Proxy satisfies the base Proxy interface, so handler passes
+       through unchanged. */
+    size_t inheritedCount = s->super_ ? s->super_->getMethodNum() : 0;
+
     for(size_t i = 0; i < allMethods.size(); i++)
     {
         Method* method = allMethods[i];
         f.output("case %d:", i);
         f.indent();
-        f.output("return d.dispatch%s(reader, handler)", method->getNameC());
+        if(i < inheritedCount)
+            f.output("return (&%sDispatcher{}).dispatch%s(reader, handler)",
+                s->super_->getNameC(), method->getNameC());
+        else
+            f.output("return d.dispatch%s(reader, handler)", method->getNameC());
         f.recover();
     }
 
@@ -1088,34 +1147,40 @@ static void generateProxyDispatcher(CodeFile& f, Service* s)
         {
             Field& field = method.fields_[j];
             std::string goName = toGoFieldName(field.getNameC());
-            const char* defVal = getFieldGoDefault(field);
-
-            if(defVal && strlen(defVal) > 0)
-            {
-                f.output("%s := %s", goName.c_str(), defVal);
-            }
-            else
-            {
-                f.output("var %s %s", goName.c_str(), getFieldGoType(field));
-            }
+            /* Declared with an explicit type rather than `X := <default>`: the
+               default literal would infer int for a numeric field and then
+               reject the typed value read below. The zero value of every Go
+               type is already the wire default. */
+            f.output("var %s %s", goName.c_str(), getFieldGoType(field));
         }
 
         f.output("");
         for(size_t j = 0; j < method.fields_.size(); j++)
         {
+            /* Each parameter is read in its own block: the reader temporaries
+               are declared with := and would otherwise collide across the
+               parameters of the same method. */
+            f.output("{");
+            f.indent();
             generateFieldDeserialize(f, method.fields_[j], "reader", true);
+            f.recover();
+            f.output("}");
         }
 
         f.output("");
+        // Emitted on a single line: a multi-line argument list would need a
+        // trailing comma before the closing paren.
         f.output("// Call handler");
-        f.output("return handler.%s(", method.getNameC());
+        f.begin();
+        f.append("return handler.%s(", method.getNameC());
         for(size_t j = 0; j < method.fields_.size(); j++)
         {
             Field& field = method.fields_[j];
             std::string goName = toGoFieldName(field.getNameC());
-            f.output("%s%s", goName.c_str(), (j < method.fields_.size() - 1) ? ", " : "");
+            f.append("%s%s", goName.c_str(), (j < method.fields_.size() - 1) ? ", " : "");
         }
-        f.output(")");
+        f.append(")");
+        f.end();
 
         f.recover();
         f.output("}");
@@ -1140,11 +1205,31 @@ void GoGenerator::generate()
     f.output("");
     f.output("package %s", toPackageName(Compiler::inst().filename_).c_str());
     f.output("");
+    /* Go treats an unused import as a compile error, so each optional import is
+       emitted only when the definitions actually reference it:
+         encoding/json - the MarshalJSON/UnmarshalJSON pair on every enum
+         errors        - enum UnmarshalJSON and the service stub's guard */
+    bool hasEnum = false;
+    bool hasService = false;
+    for(size_t i = 0; i < Compiler::inst().definitions_.size(); i++)
+    {
+        Definition* definition = Compiler::inst().definitions_[i];
+        if(definition->getFile() != Compiler::inst().filename_)
+            continue;
+        if(definition->getEnum())
+            hasEnum = true;
+        else if(definition->getService())
+            hasService = true;
+    }
+
     f.output("import (");
     f.indent();
-    f.output("\"encoding/json\"");
-    f.output("\"errors\"");
-    f.output("");
+    if(hasEnum)
+        f.output("\"encoding/json\"");
+    if(hasEnum || hasService)
+        f.output("\"errors\"");
+    if(hasEnum || hasService)
+        f.output("");
     f.output("\"github.com/rpc/runtime\"");
     f.recover();
     f.output(")");

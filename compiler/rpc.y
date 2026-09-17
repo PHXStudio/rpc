@@ -163,41 +163,11 @@ structure:
 		Compiler::inst().curStruct_ = Struct(Compiler::inst().curFilename_, $2);
 	}
 	opt_super_structure
-	opt_struct_flags
 	'{' struct_fields '}'
 	{
 		// Add this struct definition.
 		Struct* s = new Struct( Compiler::inst().curStruct_ );
 		Compiler::inst().definitions_.push_back( s );
-	}
-	;
-
-/*opt_struct_flags */
-opt_struct_flags:
-	'(' struct_flags ')'
-	|
-	/*empty*/
-	;
-
-/* struct_flags */
-struct_flags:
-	struct_flags struct_flag
-	|
-	/*empty*/
-	;
-
-/* struct_flag */
-struct_flag:
-	TOKEN_IDENTIFIER
-	{
-		// skip serializtion compress.
-		if( $1 == "skipcomp" )
-			Compiler::inst().curStruct_.skipComp_ = true;
-		else
-		{
-			Compiler::inst().outputErrorFL("invalid struct flag \"%s\"", $1.c_str());
-			YYERROR;
-		}
 	}
 	;
 

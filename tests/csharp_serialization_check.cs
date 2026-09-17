@@ -3,7 +3,7 @@
 */
 using System;
 using System.IO;
-using bin;
+using rpc;
 
 // Assuming the generated struct is named StructBase (adjust if different)
 public class CSharpInteropTest

@@ -2,7 +2,7 @@ using System;
 using System.Globalization;
 using System.IO;
 using System.Text;
-using bin;
+using rpc;
 
 internal static class HexUtil
 {

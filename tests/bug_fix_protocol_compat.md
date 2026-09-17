@@ -1,5 +1,11 @@
 # 协议兼容性Bug修复报告
 
+> **历史文档，部分内容已过期（保留作记录，不再更新）**
+>
+> 本文描述的 `skipComp` 标记已从编译器与语法中**彻底移除**，所有 struct 统一走「与默认值比较」的压缩路径。
+> 文中「skipComp 参数保留」「仍然支持 skipComp 语法」等表述已不成立。
+> 当前的线格式规格见 [docs/knowledge-base.md](../docs/knowledge-base.md)。
+
 ## 问题描述
 日志显示 `Channel 5 17 3 dispatch error` - C#和C++之间协议不兼容
 

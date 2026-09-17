@@ -21,5 +21,14 @@ namespace rpc
 			rdptr_ += len;
 			return true;
 		}
+
+		/** Skip bytes without producing data, used by the field-mask length prefix. */
+		public bool Skip(uint len)
+		{
+			if (buffer_ == null || rdptr_ + len > (uint)buffer_.Length)
+				return false;
+			rdptr_ += len;
+			return true;
+		}
 	}
 }

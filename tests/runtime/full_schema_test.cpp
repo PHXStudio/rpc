@@ -168,7 +168,7 @@ void expectStructBase(const StructBase& s) {
 } // namespace
 
 // ============================================================
-// StructType (skipcomp) tests
+// StructType tests
 // ============================================================
 
 TEST(StructType, Roundtrip) {

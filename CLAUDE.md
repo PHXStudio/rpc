@@ -4,6 +4,17 @@
 
 > **深度资料见 [docs/knowledge-base.md](docs/knowledge-base.md)** —— 线格式字节级规格、类型映射矩阵、跨语言兼容性实测结论、已知问题清单。本文只写**规则**，不重复那里的内容。
 
+## Planning & Task Execution
+- 面对复杂功能、重构或多步骤任务时，禁止直接修改代码
+- 必须先在 `docs/plans/` 目录下生成或更新对应的 Markdown 计划文档
+- 计划文档应包含：
+  1. 目标与背景
+  2. 受影响文件清单
+  3. 分步实现计划与 Checklist
+  4. 验证与测试步骤
+- 等待用户审查确认该 Plan 后，再逐步执行代码变更。
+- 每次变更之后都要更新 `docs/knowledge-base.md`
+
 ---
 
 ## 1. 常用命令
@@ -36,7 +47,12 @@ ctest --test-dir build --output-on-failure -L rpc
 
 ### 规则二：后端功能必须对等
 
-四个生成器是彻底的复制-分叉结构（`CppGenerator` / `CSGenerator` / `PYGenerator` / `GoGenerator`，彼此不共享代码）。同一个特性漏实现一两个后端是**已经发生过的事**——`(skipcomp)` 就只在 C++ 与 C# 中实现。
+四个生成器是彻底的复制-分叉结构（`CppGenerator` / `CSGenerator` / `PYGenerator` / `GoGenerator`，彼此不共享代码）。同一个特性漏实现一两个后端是**已经发生过的事**：
+
+- `(skipcomp)` 曾只在 C++ 与 C# 中实现，Go 与 Python 完全忽略它，同一份 schema 因此产生两种字节流（该标记已从语法中移除）。
+- 服务方法载荷至今仍不一致：C++ 与 C# 带 FieldMask 段，Go 与 Python 不带。
+
+改动序列化逻辑时，务必确认四个后端对同一份输入产出相同字节——**现有测试的往返断言抓不到这类问题**。
 
 - 新增 IDL 特性时，四个后端一并实现；确实无法支持的，必须在本文档与本提交信息中**显式标注**。
 - 修改任一生成器后，用同一份 schema 对四个后端各生成一次并逐一 diff 检查。
@@ -48,15 +64,18 @@ ctest --test-dir build --output-on-failure -L rpc
 > 改动任一生成器后，必须对产物跑一次真实编译。
 
 ```bash
-go build ./...                       # Go：未使用导入、复合字面量、方法签名
-dotnet build <verifier>.csproj       # C#：命名空间引用
+go build ./...                       # Go：未使用导入、复合字面量、方法签名、接收者前缀
+dotnet build tests/cs/CrossLangVerifier.csproj -c Debug \
+    -p:GeneratedCsDir=<生成的 cs 目录>   # C#
 g++ -std=c++11 -fsyntax-only ...     # C++
 python3 -c "import ast; ast.parse(open('X.py').read())"   # Python 语法
 ```
 
+**Go 的产物还需要生成一份 `go.mod` 指向 `runtime/go`**（module `github.com/rpc/runtime`）才能编译。
+
 ### 规则四：命名一律为 `rpc`
 
-`bin` 与 `arpc` 是历史命名，已在 `923d720` 统一为 `rpc`。**该次统一未改完生成器**，是若干编译失败的根源。新增代码、生成模板、注释中**不要重新引入这两个名字**：
+`bin` 与 `arpc` 是历史命名，已在 `923d720` 统一为 `rpc`。该次统一当时**未改完生成器**，导致 C# 链路长期无法编译（已于后续修复）。新增代码、生成模板、注释中**不要重新引入这两个名字**：
 
 | 位置 | 正确写法 |
 |---|---|
@@ -66,13 +85,15 @@ python3 -c "import ast; ast.parse(open('X.py').read())"   # Python 语法
 
 ### 规则五：跨语言兼容性是默认要求
 
-新写或修改的 schema，默认应能在四种语言间互通。已知**会破坏互通**的写法：
+新写或修改的 schema，默认应能在四种语言间互通。基本类型（标量、字符串、数组、bool、枚举）
+已验证四方输出逐字节一致，由 `rpc_wire_format_tests` 守护。
 
-- 声明 `(skipcomp)` —— 它的真实语义是「跳过与默认值比较」，即无条件写出所有字段；且 Go / Python 生成器完全忽略该标记。
-- 依赖非 64 位整数的 Go 互操作 —— Go 后端目前把所有整数按 8 字节写出。
-- 在结构体中嵌套 struct 后由 Python 收发 —— 掩码位存在错位。
+已知**仍会破坏互通**的两处：
 
-需要这些写法时，先确认对端语言，并在提交信息中说明兼容性范围。详情见知识库 §6 与 §10。
+- **结构体中嵌套 struct 后由 Python 收发** —— Python 生成的嵌套 writer 不设置自己的掩码位，后续字段掩码整体前移一位。
+- **服务方法调用** —— Go 与 Python 的方法载荷不含 FieldMask，C++ 与 C# 含，因而无法跨语言。
+
+改动线格式时，必须同步更新 `rpc_wire_format_tests` 中的黄金向量。详情见知识库 §10 与 §12。
 
 ### 规则六：提交前必须端到端验证
 

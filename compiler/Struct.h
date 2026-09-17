@@ -15,13 +15,11 @@ class Struct :
 public:
 	Struct():
 	Definition(),
-	super_(NULL),
-	skipComp_(false)
+	super_(NULL)
 	{}
 	Struct(const std::string& f, const std::string& n):
 	Definition(f, n),
-	super_(NULL),
-	skipComp_(false)
+	super_(NULL)
 	{}
 
 	virtual Struct*	getStruct()	{ return this; }
@@ -34,7 +32,6 @@ public:
 
 	Struct*				super_;		///< Base struct, if any.
 	std::string					cppcode_;	///< Embedded C++ snippet.
-	bool						skipComp_;	///< Skip compression for this type.
 };
 
 
