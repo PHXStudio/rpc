@@ -42,14 +42,26 @@ RUN cmake -S /src -B /src/build \
 FROM base AS linux-tester
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
-        wget apt-transport-https \
+        wget apt-transport-https python3 \
  && wget -q https://dot.net/v1/dotnet-install.sh -O /tmp/dotnet-install.sh \
  && chmod +x /tmp/dotnet-install.sh \
  && /tmp/dotnet-install.sh --channel 6.0 --install-dir /usr/share/dotnet \
  && rm -f /tmp/dotnet-install.sh \
  && rm -rf /var/lib/apt/lists/*
+# python3 is required, not optional: without it find_package(Python3) fails and
+# the two Python conformance tests are never even registered, so `ctest` would
+# report a clean run while the Python backend went unverified. The base image
+# does not ship an interpreter.
+#
+# Go comes from the official tarball rather than apt: jammy ships 1.18, which
+# refuses the `go 1.21` directive in runtime/go/go.mod.
+ARG GO_VERSION=1.21.13
+RUN ARCH="$(dpkg --print-architecture)" \
+ && wget -q "https://go.dev/dl/go${GO_VERSION}.linux-${ARCH}.tar.gz" -O /tmp/go.tar.gz \
+ && tar -C /usr/local -xzf /tmp/go.tar.gz \
+ && rm -f /tmp/go.tar.gz
 ENV DOTNET_ROOT=/usr/share/dotnet
-ENV PATH="$PATH:/usr/share/dotnet"
+ENV PATH="$PATH:/usr/share/dotnet:/usr/local/go/bin"
 COPY . /src
 RUN cmake -S /src -B /src/build \
         -DBUILD_TESTING=ON \
