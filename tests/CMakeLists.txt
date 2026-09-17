@@ -108,6 +108,23 @@ add_custom_command(
   VERBATIM
 )
 
+# ---------- Edge schema (multi-byte field mask) ----------
+# Ten fields, so the mask needs two bytes; every other schema stays within one.
+set(_edge_schema "${CMAKE_CURRENT_SOURCE_DIR}/schema/Edge.rpc")
+set(_edge_gen_cpp "${CMAKE_CURRENT_BINARY_DIR}/generated/edge_cpp")
+set(_edge_gen_cpp_slash "${_edge_gen_cpp}/")
+
+add_custom_command(
+  OUTPUT
+    "${_edge_gen_cpp}/Edge.h"
+    "${_edge_gen_cpp}/Edge.cpp"
+  COMMAND ${CMAKE_COMMAND} -E make_directory "${_edge_gen_cpp}"
+  COMMAND "$<TARGET_FILE:rpc>" -i "${_edge_schema}" -o "${_edge_gen_cpp_slash}" -g cpp
+  DEPENDS rpc "${_edge_schema}"
+  COMMENT "Generating Edge (cpp) from RPC schema"
+  VERBATIM
+)
+
 # ---------- GoogleTest ----------
 find_package(GTest QUIET)
 if(NOT GTest_FOUND)
@@ -410,6 +427,23 @@ else()
 endif()
 target_link_libraries(rpc_interop_crosslang_tests PRIVATE GTest::gtest_main GTest::gtest)
 
+# 4f. Protocol limits: the upper bounds documented in the wire format spec must
+# actually be enforced by the reader, not merely written down.
+add_executable(rpc_protocol_limit_tests
+  runtime/protocol_limit_test.cpp
+  "${_full_gen_cpp}/FullTest.cpp"
+  "${_fullcl_gen_cpp}/FullCrossLang.cpp"
+)
+add_dependencies(rpc_protocol_limit_tests rpc)
+target_include_directories(rpc_protocol_limit_tests PRIVATE
+  "${CMAKE_SOURCE_DIR}/runtime/cpp"
+  "${_full_gen_cpp}"
+  "${_fullcl_gen_cpp}"
+  "${rapidjson_SOURCE_DIR}/include"
+)
+target_compile_features(rpc_protocol_limit_tests PRIVATE cxx_std_11)
+target_link_libraries(rpc_protocol_limit_tests PRIVATE GTest::gtest_main GTest::gtest)
+
 # 5. Service tests
 add_executable(rpc_service_tests
   runtime/service_test.cpp
@@ -464,6 +498,7 @@ add_executable(rpc_wire_format_tests
   "${_fullcl_gen_cpp}/FullCrossLang.cpp"
   "${_nested_gen_cpp}/Nested.cpp"
   "${_interop_gen_cpp}/InteropFull.cpp"
+  "${_edge_gen_cpp}/Edge.cpp"
 )
 add_dependencies(rpc_wire_format_tests rpc)
 target_include_directories(rpc_wire_format_tests PRIVATE
@@ -472,6 +507,7 @@ target_include_directories(rpc_wire_format_tests PRIVATE
   "${_fullcl_gen_cpp}"
   "${_nested_gen_cpp}"
   "${_interop_gen_cpp}"
+  "${_edge_gen_cpp}"
   "${rapidjson_SOURCE_DIR}/include"
 )
 target_compile_features(rpc_wire_format_tests PRIVATE cxx_std_11)
@@ -572,6 +608,7 @@ gtest_discover_tests(rpc_compiler_negative_tests PROPERTIES LABELS "rpc")
 gtest_discover_tests(rpc_import_tests PROPERTIES LABELS "rpc")
 gtest_discover_tests(rpc_runtime_edge_tests PROPERTIES LABELS "rpc")
 gtest_discover_tests(rpc_interop_crosslang_tests PROPERTIES LABELS "rpc")
+gtest_discover_tests(rpc_protocol_limit_tests PROPERTIES LABELS "rpc")
 gtest_discover_tests(rpc_service_tests PROPERTIES LABELS "rpc")
 gtest_discover_tests(rpc_json_tests PROPERTIES LABELS "rpc")
 gtest_discover_tests(rpc_go_generator_tests PROPERTIES LABELS "rpc")

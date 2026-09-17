@@ -19,6 +19,7 @@
 #include "ProtocolBytesWriter.h"
 
 #include "CrossLangTest.h"
+#include "Edge.h"
 #include "FullCrossLang.h"
 #include "InteropFull.h"
 #include "Nested.h"
@@ -356,4 +357,55 @@ TEST(WireFormatGolden, InteropEmptyWritesNothing) {
 		" 01 00 00 00"       // i32_ = 1
 		" 01 00"             // inner_: own mask byte, all fields default
 		);                   // empty_: nothing at all
+}
+
+/* ---------- Edge: a field mask wider than one byte ---------- */
+
+/* Ten fields need (10-1)/8+1 = 2 mask bytes, and fmLen is a bare uint8 rather
+   than a dynSize. No other schema in the suite leaves the first mask byte, so
+   nothing else exercises the second byte or a bit index that crosses the byte
+   boundary. */
+TEST(WireFormatGolden, MultiByteMaskAllDefaults) {
+	ManyFields m;
+	// fmLen = 2, both mask bytes zero, and no payload at all.
+	expectGolden(m, "02 00 00");
+}
+
+TEST(WireFormatGolden, MultiByteMaskCrossesByteBoundary) {
+	ManyFields m;
+	m.f0_ = 1;   // bit 0 -> first mask byte
+	m.f9_ = 2;   // bit 9 -> second mask byte, first bit
+
+	expectGolden(m,
+		"02"             // fmLen = 2
+		" 80 40"         // f0_ -> byte0's 0x80; f9_ -> byte1's 0x40
+		" 01 00 00 00"   // f0_ = 1
+		" 02 00 00 00"); // f9_ = 2
+}
+
+TEST(WireFormatGolden, MultiByteMaskAllFieldsSet) {
+	ManyFields m;
+	m.f0_ = 1;
+	m.f1_ = 2;
+	m.f2_ = 3;
+	m.f3_ = 4;
+	m.f4_ = 5;
+	m.f5_ = 6;
+	m.f6_ = 7;
+	m.f7_ = 8;
+	m.f8_ = 9;
+	m.f9_ = 10;
+
+	expectGolden(m,
+		"02 ff c0"       // all ten bits set: byte0 0xFF, byte1 0xC0 (bits 8 and 9)
+		" 01 00 00 00"
+		" 02 00 00 00"
+		" 03 00 00 00"
+		" 04 00 00 00"
+		" 05 00 00 00"
+		" 06 00 00 00"
+		" 07 00 00 00"
+		" 08 00 00 00"
+		" 09 00 00 00"
+		" 0a 00 00 00"); // f9_ = 10
 }
