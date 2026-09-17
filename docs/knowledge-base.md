@@ -747,7 +747,16 @@ Python 与 Go 的两条外部工具链同理：工具链缺失时用例仍然注
 
 ### Docker
 
-`Dockerfile` 是一个多阶段构建：Linux 构建、Windows 交叉编译（mingw-w64）、以及一个额外安装 .NET 6 用于跑测试的 tester 阶段。`scripts/` 下有 8 个对应的 sh / ps1 脚本。`docker build` 的上下文需要注意：`.dockerignore` 没有排除 `_deps/`，会把完整的依赖克隆打进上下文。
+`Dockerfile` 是一个多阶段构建：Linux 构建、Windows 交叉编译（mingw-w64）、以及一个额外安装 .NET 6、python3 与 Go 用于跑测试的 tester 阶段。`scripts/` 下有 8 个对应的 sh / ps1 脚本。`docker build` 的上下文需要注意：`.dockerignore` 没有排除 `_deps/`，会把完整的依赖克隆打进上下文。
+
+> **只在 macOS 上跑测试会漏掉文件名大小写问题**
+>
+> macOS 默认的文件系统大小写不敏感，Linux 敏感。`go_test.cpp` 曾读取
+> `fulltest.go`，而编译器产出的是 `FullTest.go`（文件名取自 **schema 主文件名**，
+> 不是其中定义的结构体名）—— 本机九个用例全过，容器里九个全挂，且失败信息
+> 表现为「生成物内容不对」而非「文件不存在」。
+>
+> 任何断言**生成物文件名**的用例，都必须在容器里至少验证一次。
 
 ---
 
