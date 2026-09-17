@@ -13,3 +13,5 @@
 #define RPC_TEST_SCHEMA_DIR "@RPC_TEST_SCHEMA_DIR@"
 /** Directory for compiler test output. */
 #define RPC_TEST_OUTPUT_DIR "@RPC_TEST_OUTPUT_DIR@"
+/** Version string compiled into the rpc binary under test. */
+#define RPC_TEST_VERSION_STRING "@RPC_VERSION_STRING@"

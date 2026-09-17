@@ -122,3 +122,47 @@ TEST(Compiler, EdgeRpcCoversMultiByteMask) {
 	EXPECT_TRUE(fileContains(outDir + "/Edge.h", "struct ManyFields"));
 	EXPECT_TRUE(fileContains(outDir + "/Edge.h", "struct WithSnippet"));
 }
+
+/* ---------- --version ----------
+   The version string is what makes a per-commit release identifiable: without
+   it every artifact is an anonymous "rpc". It is baked in at configure time, so
+   these assert that the binary under test reports exactly what the build system
+   recorded. A text-only assertion is the right tool here -- nothing about this
+   path touches serialization, so there is no byte-level contract to check. */
+
+/* Windows would turn the trailing newline into CRLF, which is not what is being
+   tested. */
+static std::string stripCR(const std::string& s) {
+	std::string out;
+	for (size_t i = 0; i < s.size(); i++)
+		if (s[i] != '\r') out.push_back(s[i]);
+	return out;
+}
+
+TEST(Compiler, VersionFlagIdentifiesTheBuild) {
+	std::string out;
+	ASSERT_EQ(runCompilerArgs("--version", &out), 0);
+	EXPECT_EQ(stripCR(out), std::string("rpc ") + RPC_TEST_VERSION_STRING + "\n");
+}
+
+TEST(Compiler, VersionShortFlagMatchesLongFlag) {
+	std::string longForm, shortForm;
+	ASSERT_EQ(runCompilerArgs("--version", &longForm), 0);
+	ASSERT_EQ(runCompilerArgs("-v", &shortForm), 0);
+	EXPECT_FALSE(shortForm.empty());
+	EXPECT_EQ(shortForm, longForm);
+}
+
+/* --version has to short-circuit before the schema is opened: a version query
+   that demanded a valid input file would be useless for checking a binary you
+   just downloaded. */
+TEST(Compiler, VersionFlagSkipsCompilation) {
+	std::string out;
+	ASSERT_EQ(runCompilerArgs("--version -i /nonexistent/schema.rpc", &out), 0);
+	EXPECT_EQ(stripCR(out), std::string("rpc ") + RPC_TEST_VERSION_STRING + "\n");
+
+	// Control: the same unreadable path without --version must fail. Without
+	// this, the assertion above would also pass on a path that happened to
+	// exist, and would prove nothing about short-circuiting.
+	EXPECT_NE(runCompilerArgs("-i /nonexistent/schema.rpc", NULL), 0);
+}

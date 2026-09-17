@@ -65,6 +65,33 @@ inline int runCompiler(const std::string& inputFile, const std::string& outputDi
 	return shellExitStatus(std::system(cmd.str().c_str()));
 }
 
+/** Run the rpc compiler with a raw argument string, capturing its output.
+
+    std::system() offers no way to read what the child wrote, so stdout and
+    stderr are redirected to a file first and read back afterwards. */
+inline int runCompilerArgs(const std::string& args, std::string* output) {
+	const std::string dir = makeOutDir("args");
+	mkdirp(dir);
+	const std::string capture = dir + "/output.txt";
+
+	std::ostringstream cmd;
+	cmd << "\"" << RPC_TEST_COMPILER_EXE << "\" " << args;
+	cmd << " > \"" << capture << "\" 2>&1";
+
+	const int status = shellExitStatus(std::system(cmd.str().c_str()));
+
+	if (output != NULL) {
+		std::ifstream f(capture.c_str());
+		if (!f) {
+			output->clear();
+		} else {
+			output->assign(std::istreambuf_iterator<char>(f),
+			               std::istreambuf_iterator<char>());
+		}
+	}
+	return status;
+}
+
 inline bool fileContains(const std::string& path, const std::string& needle) {
 	std::ifstream f(path);
 	if (!f) return false;
